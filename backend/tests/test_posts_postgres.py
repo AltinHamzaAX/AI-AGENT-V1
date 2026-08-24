@@ -10,9 +10,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.infrastructure.database.repositories.posts import SQLAlchemyPostRepository
-from app.models.posts import GenerationArtifactModel, PostGenerationModel, PostModel
+from app.models.posts import (
+    GenerationArtifactModel,
+    PostGenerationModel,
+    PostGenerationStateModel,
+    PostGenerationStateVersionModel,
+    PostModel,
+)
 from app.modules.posts.domain.entities import PostScope
-from app.modules.posts.domain.enums import GenerationArtifactKind
+from app.modules.posts.domain.enums import GenerationArtifactKind, PostWorkflowSection
+from app.modules.posts.domain.exceptions import WorkflowStateConflictError
 from app.modules.posts.services import PostsService
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
@@ -168,5 +175,82 @@ async def test_postgres_constraints_and_post_cascade_cover_generations_and_artif
                 GenerationArtifactModel.id == artifact.id
             )
         )
+        state_count = await session.scalar(
+            select(func.count(PostGenerationStateModel.generation_id)).where(
+                PostGenerationStateModel.generation_id == generation.id
+            )
+        )
+        state_version_count = await session.scalar(
+            select(func.count(PostGenerationStateVersionModel.generation_id)).where(
+                PostGenerationStateVersionModel.generation_id == generation.id
+            )
+        )
     assert generation_count == 0
     assert artifact_count == 0
+    assert state_count == 0
+    assert state_version_count == 0
+
+
+@pytest.mark.asyncio
+async def test_postgres_state_survives_sessions_and_optimistic_concurrency(
+    postgres_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    scope = PostScope(user_id=uuid4(), project_id=uuid4())
+    async with postgres_session_factory.begin() as session:
+        service = PostsService(SQLAlchemyPostRepository(session))
+        post = await service.create_post(
+            scope=scope,
+            conversation_id=None,
+            campaign_id=None,
+            title="Restart-safe state",
+        )
+        generation = await service.request_generation(post_id=post.id, scope=scope)
+
+    async with postgres_session_factory.begin() as session:
+        service = PostsService(SQLAlchemyPostRepository(session))
+        recovered = await service.get_workflow_state(
+            generation_id=generation.id,
+            post_id=post.id,
+            scope=scope,
+        )
+        assert recovered.version == 1
+        assert recovered.data["brief"] == {}
+
+    async def write_brief(goal: str) -> str:
+        try:
+            async with postgres_session_factory.begin() as session:
+                service = PostsService(SQLAlchemyPostRepository(session))
+                await service.write_workflow_section(
+                    generation_id=generation.id,
+                    post_id=post.id,
+                    scope=scope,
+                    section=PostWorkflowSection.BRIEF,
+                    value={"goal": goal},
+                    expected_version=1,
+                )
+            return "written"
+        except WorkflowStateConflictError:
+            return "conflict"
+
+    try:
+        outcomes = await asyncio.gather(write_brief("A"), write_brief("B"))
+        assert sorted(outcomes) == ["conflict", "written"]
+
+        async with postgres_session_factory() as session:
+            service = PostsService(SQLAlchemyPostRepository(session))
+            recovered = await service.get_workflow_state(
+                generation_id=generation.id,
+                post_id=post.id,
+                scope=scope,
+            )
+            history = await service.list_workflow_state_versions(
+                generation_id=generation.id,
+                post_id=post.id,
+                scope=scope,
+            )
+            assert recovered.version == 2
+            assert recovered.data["brief"]["goal"] in {"A", "B"}
+            assert [snapshot.version for snapshot in history] == [1, 2]
+            assert history[0].data["brief"] == {}
+    finally:
+        await _delete_post(postgres_session_factory, post.id)

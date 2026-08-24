@@ -117,3 +117,10 @@ posts. Each post owns ordered generation attempts and each attempt starts in
 `pending`; later worker tickets will drive queueing and workflow transitions.
 Generation artifacts store scoped metadata and private storage references without
 exposing internal object keys through HTTP responses.
+
+Every generation also owns a durable workflow state. It starts at version 1 and
+stores the conversation context, brief, semantic contract, brand/product inputs,
+assets, audience/research outputs, strategies, creative and design decisions,
+generation references, quality results, and revision history. A stage updates one
+section with an expected version; stale writes return `409`, while every accepted
+write creates an immutable snapshot that a restarted worker can recover.

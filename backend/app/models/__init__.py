@@ -2,7 +2,13 @@
 
 from app.models.assets import AssetModel
 from app.models.conversations import ConversationModel, MessageModel
-from app.models.posts import GenerationArtifactModel, PostGenerationModel, PostModel
+from app.models.posts import (
+    GenerationArtifactModel,
+    PostGenerationModel,
+    PostGenerationStateModel,
+    PostGenerationStateVersionModel,
+    PostModel,
+)
 
 __all__ = [
     "AssetModel",
@@ -10,5 +16,7 @@ __all__ = [
     "GenerationArtifactModel",
     "MessageModel",
     "PostGenerationModel",
+    "PostGenerationStateModel",
+    "PostGenerationStateVersionModel",
     "PostModel",
 ]

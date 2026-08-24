@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,7 +14,11 @@ from app.infrastructure.database.repositories.posts import SQLAlchemyPostReposit
 from app.infrastructure.database.session import get_db_transaction
 from app.main import app
 from app.modules.posts.domain.entities import PostScope
-from app.modules.posts.domain.enums import GenerationArtifactKind, GenerationStatus
+from app.modules.posts.domain.enums import (
+    GenerationArtifactKind,
+    GenerationStatus,
+    PostWorkflowSection,
+)
 from app.modules.posts.services import PostsService
 
 
@@ -308,6 +313,40 @@ async def test_artifact_validation_rejects_invalid_metadata(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"timestamp": datetime.now(UTC)},
+        {"score": float("nan")},
+        {1: "non-string key"},
+    ],
+)
+async def test_internal_workflow_writes_reject_non_json_values(
+    post_session_factory: async_sessionmaker[AsyncSession],
+    value: dict,
+) -> None:
+    scope = PostScope(user_id=uuid4(), project_id=uuid4())
+    async with post_session_factory.begin() as session:
+        service = PostsService(SQLAlchemyPostRepository(session))
+        post = await service.create_post(
+            scope=scope,
+            conversation_id=None,
+            campaign_id=None,
+            title=None,
+        )
+        generation = await service.request_generation(post_id=post.id, scope=scope)
+        with pytest.raises(ValueError):
+            await service.write_workflow_section(
+                generation_id=generation.id,
+                post_id=post.id,
+                scope=scope,
+                section=PostWorkflowSection.BRIEF,
+                value=value,
+                expected_version=1,
+            )
+
+
+@pytest.mark.asyncio
 async def test_title_and_request_validation(post_client: AsyncClient) -> None:
     headers = _headers()
     blank = await _post(post_client, headers, {"title": "   "})
@@ -328,6 +367,137 @@ async def test_title_and_request_validation(post_client: AsyncClient) -> None:
         assert (
             await post_client.post("/api/posts", headers=invalid_headers, json={})
         ).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_generation_workflow_state_is_complete_versioned_and_persistent(
+    post_client: AsyncClient,
+) -> None:
+    headers = _headers()
+    post = await _post(post_client, headers)
+    generation_response = await post_client.post(
+        f"/api/posts/{post['id']}/generations",
+        headers=headers,
+    )
+    generation = generation_response.json()
+    base_path = f"/api/posts/{post['id']}/generations/{generation['id']}/state"
+
+    initial = await post_client.get(base_path, headers=headers)
+    assert initial.status_code == 200
+    assert initial.json()["version"] == 1
+    assert initial.json()["schema_version"] == 1
+    assert initial.json()["state"] == {
+        "conversation_context": {},
+        "brief": {},
+        "semantic_contract": {},
+        "brand": {},
+        "product": {},
+        "assets": [],
+        "audience": {},
+        "research": {},
+        "marketing_strategy": {},
+        "creative_concept": {},
+        "copy": {},
+        "art_direction": {},
+        "design_spec": {},
+        "generation_plan": {},
+        "generation_artifacts": [],
+        "quality": {},
+        "revision_history": [],
+    }
+
+    brief = {"goal": "Launch", "platform": "instagram"}
+    written = await post_client.patch(
+        f"{base_path}/brief",
+        headers=headers,
+        json={"expected_version": 1, "value": brief},
+    )
+    assert written.status_code == 200
+    assert written.json()["version"] == 2
+    assert written.json()["state"]["brief"] == brief
+
+    assets = [{"asset_id": str(uuid4()), "role": "logo"}]
+    written_assets = await post_client.patch(
+        f"{base_path}/assets",
+        headers=headers,
+        json={"expected_version": 2, "value": assets},
+    )
+    assert written_assets.status_code == 200
+    assert written_assets.json()["version"] == 3
+    assert written_assets.json()["state"]["brief"] == brief
+    assert written_assets.json()["state"]["assets"] == assets
+
+    retrieved = await post_client.get(base_path, headers=headers)
+    assert retrieved.status_code == 200
+    assert retrieved.json()["version"] == written_assets.json()["version"]
+    assert retrieved.json()["state"] == written_assets.json()["state"]
+
+    versions = await post_client.get(f"{base_path}/versions", headers=headers)
+    assert versions.status_code == 200
+    assert [item["version"] for item in versions.json()] == [1, 2, 3]
+    assert [item["changed_section"] for item in versions.json()] == [
+        None,
+        "brief",
+        "assets",
+    ]
+    assert versions.json()[0]["state"]["brief"] == {}
+    assert versions.json()[1]["state"]["brief"] == brief
+    assert versions.json()[1]["state"]["assets"] == []
+
+
+@pytest.mark.asyncio
+async def test_workflow_state_rejects_stale_wrong_shape_and_cross_scope_writes(
+    post_client: AsyncClient,
+) -> None:
+    headers = _headers()
+    post = await _post(post_client, headers)
+    generation = (
+        await post_client.post(
+            f"/api/posts/{post['id']}/generations",
+            headers=headers,
+        )
+    ).json()
+    base_path = f"/api/posts/{post['id']}/generations/{generation['id']}/state"
+
+    first = await post_client.patch(
+        f"{base_path}/quality",
+        headers=headers,
+        json={"expected_version": 1, "value": {"score": 0.9}},
+    )
+    assert first.status_code == 200
+
+    stale = await post_client.patch(
+        f"{base_path}/quality",
+        headers=headers,
+        json={"expected_version": 1, "value": {"score": 0.1}},
+    )
+    assert stale.status_code == 409
+    assert (await post_client.get(base_path, headers=headers)).json()["state"]["quality"] == {
+        "score": 0.9
+    }
+
+    wrong_object = await post_client.patch(
+        f"{base_path}/brief",
+        headers=headers,
+        json={"expected_version": 2, "value": []},
+    )
+    assert wrong_object.status_code == 422
+    wrong_array = await post_client.patch(
+        f"{base_path}/revision_history",
+        headers=headers,
+        json={"expected_version": 2, "value": {}},
+    )
+    assert wrong_array.status_code == 422
+
+    wrong_headers = {**headers, "X-Project-ID": str(uuid4())}
+    assert (await post_client.get(base_path, headers=wrong_headers)).status_code == 404
+    assert (
+        await post_client.patch(
+            f"{base_path}/brief",
+            headers=wrong_headers,
+            json={"expected_version": 2, "value": {}},
+        )
+    ).status_code == 404
 
 
 def test_posts_boundaries_do_not_leak_sql_or_internal_agents() -> None:
