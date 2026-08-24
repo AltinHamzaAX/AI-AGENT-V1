@@ -13,12 +13,14 @@ from app.infrastructure.database.base import Base
 from app.infrastructure.database.repositories.posts import SQLAlchemyPostRepository
 from app.infrastructure.database.session import get_db_transaction
 from app.main import app
+from app.models.posts import PostGenerationStateModel
 from app.modules.posts.domain.entities import PostScope
 from app.modules.posts.domain.enums import (
     GenerationArtifactKind,
     GenerationStatus,
     PostWorkflowSection,
 )
+from app.modules.posts.domain.exceptions import SemanticContractHardFailError
 from app.modules.posts.services import PostsService
 
 
@@ -57,6 +59,32 @@ async def post_client(
 
 def _headers() -> dict[str, str]:
     return {"X-User-ID": str(uuid4()), "X-Project-ID": str(uuid4())}
+
+
+def _semantic_contract_payload(
+    *,
+    expected_version: int = 1,
+    required_asset_id: str | None = None,
+) -> dict:
+    return {
+        "expected_version": expected_version,
+        "company": "Promotiva Mobility",
+        "brand": "Škoda",
+        "product": "Škoda Fabia",
+        "primary_entity": "Škoda Fabia rental",
+        "goal": "Drive bookings",
+        "audience": "Travelers needing a compact rental car",
+        "market": "Kosovo",
+        "location": "Prishtina",
+        "offer": "€35/day",
+        "cta_intent": "Book now",
+        "platform": "Instagram",
+        "language": "Albanian",
+        "required_facts": {"price": "€35/day", "model": "Škoda Fabia"},
+        "forbidden_claims": ["cheapest rental in Kosovo"],
+        "required_assets": [required_asset_id] if required_asset_id else [],
+        "constraints": ["Do not replace the product or logo"],
+    }
 
 
 async def _conversation(client: AsyncClient, headers: dict[str, str]) -> str:
@@ -498,6 +526,212 @@ async def test_workflow_state_rejects_stale_wrong_shape_and_cross_scope_writes(
             json={"expected_version": 2, "value": {}},
         )
     ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_semantic_contract_is_created_once_persisted_and_idempotent(
+    post_client: AsyncClient,
+) -> None:
+    headers = _headers()
+    post = await _post(post_client, headers)
+    generation = (
+        await post_client.post(f"/api/posts/{post['id']}/generations", headers=headers)
+    ).json()
+    contract_path = f"/api/posts/{post['id']}/generations/{generation['id']}/semantic-contract"
+    payload = _semantic_contract_payload()
+
+    missing = await post_client.get(contract_path, headers=headers)
+    assert missing.status_code == 404
+    assert missing.json() == {"detail": "Semantic contract not found"}
+
+    created = await post_client.put(contract_path, headers=headers, json=payload)
+    assert created.status_code == 200
+    body = created.json()
+    assert body["state_version"] == 2
+    assert body["contract"]["contract_version"] == 1
+    assert body["contract"]["product"] == "Škoda Fabia"
+    assert body["contract"]["offer"] == "€35/day"
+    assert len(body["contract"]["fingerprint"]) == 64
+
+    retrieved = await post_client.get(contract_path, headers=headers)
+    assert retrieved.status_code == 200
+    assert retrieved.json() == body
+
+    repeated = await post_client.put(contract_path, headers=headers, json=payload)
+    assert repeated.status_code == 200
+    assert repeated.json() == body
+
+    state_path = f"/api/posts/{post['id']}/generations/{generation['id']}/state"
+    state = await post_client.get(state_path, headers=headers)
+    assert state.status_code == 200
+    assert state.json()["state"]["semantic_contract"] == body["contract"]
+    history = await post_client.get(f"{state_path}/versions", headers=headers)
+    assert [version["version"] for version in history.json()] == [1, 2]
+    assert history.json()[1]["changed_section"] == "semantic_contract"
+
+
+@pytest.mark.asyncio
+async def test_semantic_contract_replacement_and_generic_mutation_hard_fail(
+    post_client: AsyncClient,
+) -> None:
+    headers = _headers()
+    post = await _post(post_client, headers)
+    generation = (
+        await post_client.post(f"/api/posts/{post['id']}/generations", headers=headers)
+    ).json()
+    root = f"/api/posts/{post['id']}/generations/{generation['id']}"
+    payload = _semantic_contract_payload()
+    created = await post_client.put(
+        f"{root}/semantic-contract",
+        headers=headers,
+        json=payload,
+    )
+    assert created.status_code == 200
+
+    replacement = {**payload, "expected_version": 2, "product": "BMW", "offer": "€25/day"}
+    rejected = await post_client.put(
+        f"{root}/semantic-contract",
+        headers=headers,
+        json=replacement,
+    )
+    assert rejected.status_code == 409
+    assert rejected.json()["detail"]["decision"] == "HARD_FAIL"
+    assert rejected.json()["detail"]["code"] == "SEMANTIC_CONTRACT_HARD_FAIL"
+
+    generic = await post_client.patch(
+        f"{root}/state/semantic_contract",
+        headers=headers,
+        json={"expected_version": 2, "value": {"product": "BMW"}},
+    )
+    assert generic.status_code == 409
+    assert generic.json()["detail"]["decision"] == "HARD_FAIL"
+
+    unchanged = await post_client.get(f"{root}/semantic-contract", headers=headers)
+    assert unchanged.json()["contract"]["product"] == "Škoda Fabia"
+    assert unchanged.json()["contract"]["offer"] == "€35/day"
+    assert unchanged.json()["state_version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_semantic_contract_validation_continues_or_hard_fails_deterministically(
+    post_client: AsyncClient,
+) -> None:
+    headers = _headers()
+    required_asset_id = str(uuid4())
+    post = await _post(post_client, headers)
+    generation = (
+        await post_client.post(f"/api/posts/{post['id']}/generations", headers=headers)
+    ).json()
+    root = f"/api/posts/{post['id']}/generations/{generation['id']}"
+    created = await post_client.put(
+        f"{root}/semantic-contract",
+        headers=headers,
+        json=_semantic_contract_payload(required_asset_id=required_asset_id),
+    )
+    assert created.status_code == 200
+    fingerprint = created.json()["contract"]["fingerprint"]
+
+    valid = await post_client.post(
+        f"{root}/semantic-contract/validate",
+        headers=headers,
+        json={
+            "contract_fingerprint": fingerprint,
+            "product": "  škoda   fabia ",
+            "offer": "€35/day",
+            "required_facts": {"price": "€35/day"},
+            "claims": ["Reliable compact rental"],
+            "used_assets": [required_asset_id],
+        },
+    )
+    assert valid.status_code == 200
+    assert valid.json() == {
+        "valid": True,
+        "decision": "CONTINUE",
+        "fingerprint": fingerprint,
+    }
+
+    invalid_cases = [
+        ({"contract_fingerprint": "0" * 64}, "fingerprint"),
+        ({"product": "BMW"}, "product changed"),
+        ({"required_facts": {" PRICE ": "€25/day"}}, "required fact"),
+        ({"claims": ["The cheapest rental in Kosovo"]}, "forbidden claim"),
+        ({"used_assets": []}, "required asset missing"),
+    ]
+    for assertions, expected_violation in invalid_cases:
+        response = await post_client.post(
+            f"{root}/semantic-contract/validate",
+            headers=headers,
+            json=assertions,
+        )
+        assert response.status_code == 409
+        detail = response.json()["detail"]
+        assert detail["decision"] == "HARD_FAIL"
+        assert any(expected_violation in violation for violation in detail["violations"])
+
+
+@pytest.mark.asyncio
+async def test_semantic_contract_validates_input_scope_and_state_version(
+    post_client: AsyncClient,
+) -> None:
+    headers = _headers()
+    post = await _post(post_client, headers)
+    generation = (
+        await post_client.post(f"/api/posts/{post['id']}/generations", headers=headers)
+    ).json()
+    path = f"/api/posts/{post['id']}/generations/{generation['id']}/semantic-contract"
+
+    stale = await post_client.put(
+        path,
+        headers=headers,
+        json=_semantic_contract_payload(expected_version=2),
+    )
+    assert stale.status_code == 409
+
+    invalid = _semantic_contract_payload()
+    invalid["primary_entity"] = "   "
+    assert (await post_client.put(path, headers=headers, json=invalid)).status_code == 422
+
+    wrong_headers = {**headers, "X-User-ID": str(uuid4())}
+    assert (
+        await post_client.put(
+            path,
+            headers=wrong_headers,
+            json=_semantic_contract_payload(),
+        )
+    ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_tampered_or_legacy_semantic_contract_hard_fails_integrity_check(
+    post_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    scope = PostScope(user_id=uuid4(), project_id=uuid4())
+    async with post_session_factory.begin() as session:
+        service = PostsService(SQLAlchemyPostRepository(session))
+        post = await service.create_post(
+            scope=scope,
+            conversation_id=None,
+            campaign_id=None,
+            title=None,
+        )
+        generation = await service.request_generation(post_id=post.id, scope=scope)
+        state_model = await session.get(PostGenerationStateModel, generation.id)
+        assert state_model is not None
+        tampered_state = dict(state_model.state)
+        tampered_state["semantic_contract"] = {"product": "BMW"}
+        state_model.state = tampered_state
+
+    async with post_session_factory() as session:
+        service = PostsService(SQLAlchemyPostRepository(session))
+        with pytest.raises(
+            SemanticContractHardFailError,
+            match="Semantic contract violation",
+        ):
+            await service.get_semantic_contract(
+                generation_id=generation.id,
+                post_id=post.id,
+                scope=scope,
+            )
 
 
 def test_posts_boundaries_do_not_leak_sql_or_internal_agents() -> None:

@@ -8,6 +8,8 @@ from app.modules.posts.domain.exceptions import (
     PostGenerationNotFoundError,
     PostNotFoundError,
     PostSourceNotFoundError,
+    SemanticContractHardFailError,
+    SemanticContractNotFoundError,
     WorkflowStateConflictError,
 )
 from app.modules.posts.schemas import (
@@ -17,10 +19,25 @@ from app.modules.posts.schemas import (
     PostGenerationStateRead,
     PostGenerationStateVersionRead,
     PostRead,
+    SemanticAssertionsRequest,
+    SemanticContractCreate,
+    SemanticContractStateRead,
+    SemanticValidationRead,
     WorkflowSectionWrite,
 )
 
 router = APIRouter()
+
+
+def _semantic_hard_fail(exc: SemanticContractHardFailError) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "SEMANTIC_CONTRACT_HARD_FAIL",
+            "decision": "HARD_FAIL",
+            "violations": list(exc.violations),
+        },
+    )
 
 
 @router.post("", response_model=PostRead, status_code=status.HTTP_201_CREATED)
@@ -175,6 +192,93 @@ async def write_generation_state_section(
             status_code=409,
             detail="Workflow state version conflict; read the latest state and retry",
         ) from exc
+    except SemanticContractHardFailError as exc:
+        raise _semantic_hard_fail(exc) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return PostGenerationStateRead.from_domain(workflow_state)
+
+
+@router.put(
+    "/{post_id}/generations/{generation_id}/semantic-contract",
+    response_model=SemanticContractStateRead,
+)
+async def create_semantic_contract(
+    post_id: UUID,
+    generation_id: UUID,
+    payload: SemanticContractCreate,
+    scope: PostScopeDependency,
+    service: PostsServiceDependency,
+) -> SemanticContractStateRead:
+    try:
+        contract, workflow_state = await service.create_semantic_contract(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+            contract=payload.to_domain(),
+            expected_version=payload.expected_version,
+        )
+    except PostGenerationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Post generation not found") from exc
+    except WorkflowStateConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow state version conflict; read the latest state and retry",
+        ) from exc
+    except SemanticContractHardFailError as exc:
+        raise _semantic_hard_fail(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return SemanticContractStateRead.from_domain(contract, workflow_state)
+
+
+@router.get(
+    "/{post_id}/generations/{generation_id}/semantic-contract",
+    response_model=SemanticContractStateRead,
+)
+async def get_semantic_contract(
+    post_id: UUID,
+    generation_id: UUID,
+    scope: PostScopeDependency,
+    service: PostsServiceDependency,
+) -> SemanticContractStateRead:
+    try:
+        contract, workflow_state = await service.get_semantic_contract(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+    except PostGenerationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Post generation not found") from exc
+    except SemanticContractNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Semantic contract not found") from exc
+    except SemanticContractHardFailError as exc:
+        raise _semantic_hard_fail(exc) from exc
+    return SemanticContractStateRead.from_domain(contract, workflow_state)
+
+
+@router.post(
+    "/{post_id}/generations/{generation_id}/semantic-contract/validate",
+    response_model=SemanticValidationRead,
+)
+async def validate_semantic_contract(
+    post_id: UUID,
+    generation_id: UUID,
+    payload: SemanticAssertionsRequest,
+    scope: PostScopeDependency,
+    service: PostsServiceDependency,
+) -> SemanticValidationRead:
+    try:
+        contract = await service.validate_semantic_assertions(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+            assertions=payload.to_domain(),
+        )
+    except PostGenerationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Post generation not found") from exc
+    except SemanticContractNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Semantic contract not found") from exc
+    except SemanticContractHardFailError as exc:
+        raise _semantic_hard_fail(exc) from exc
+    return SemanticValidationRead(fingerprint=contract.fingerprint)

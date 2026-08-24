@@ -35,3 +35,9 @@ infrastructure. `PostGeneration` owns the attempt number and lifecycle status;
 complete structured workflow independently from worker memory. Section-scoped
 writes use optimistic version checks and retain full snapshots for recovery and
 audit history.
+
+The `semantic_contract` section is not writable through the generic state patch.
+It is created idempotently through a dedicated service operation, then protected
+by a canonical SHA-256 fingerprint. Downstream assertions can be checked without
+an LLM call; product/fact drift, forbidden claims, missing required assets, or a
+fingerprint mismatch produce a structured `SEMANTIC_CONTRACT_HARD_FAIL`.

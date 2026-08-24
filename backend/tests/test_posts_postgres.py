@@ -19,7 +19,11 @@ from app.models.posts import (
 )
 from app.modules.posts.domain.entities import PostScope
 from app.modules.posts.domain.enums import GenerationArtifactKind, PostWorkflowSection
-from app.modules.posts.domain.exceptions import WorkflowStateConflictError
+from app.modules.posts.domain.exceptions import (
+    SemanticContractHardFailError,
+    WorkflowStateConflictError,
+)
+from app.modules.posts.domain.semantic_contract import PostSemanticContract
 from app.modules.posts.services import PostsService
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
@@ -252,5 +256,81 @@ async def test_postgres_state_survives_sessions_and_optimistic_concurrency(
             assert recovered.data["brief"]["goal"] in {"A", "B"}
             assert [snapshot.version for snapshot in history] == [1, 2]
             assert history[0].data["brief"] == {}
+    finally:
+        await _delete_post(postgres_session_factory, post.id)
+
+
+@pytest.mark.asyncio
+async def test_postgres_concurrent_semantic_contracts_allow_only_one_source_of_truth(
+    postgres_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    scope = PostScope(user_id=uuid4(), project_id=uuid4())
+    async with postgres_session_factory.begin() as session:
+        service = PostsService(SQLAlchemyPostRepository(session))
+        post = await service.create_post(
+            scope=scope,
+            conversation_id=None,
+            campaign_id=None,
+            title="Semantic concurrency",
+        )
+        generation = await service.request_generation(post_id=post.id, scope=scope)
+
+    def contract(product: str) -> PostSemanticContract:
+        return PostSemanticContract.create(
+            company="Promotiva Mobility",
+            brand="Škoda" if product == "Škoda Fabia" else "BMW",
+            product=product,
+            primary_entity=product,
+            goal="Drive bookings",
+            audience="Travelers",
+            market="Kosovo",
+            location="Prishtina",
+            offer="€35/day" if product == "Škoda Fabia" else "€25/day",
+            cta_intent="Book now",
+            platform="Instagram",
+            language="Albanian",
+            required_facts={},
+            forbidden_claims=[],
+            required_assets=[],
+            constraints=[],
+        )
+
+    async def write(candidate: PostSemanticContract) -> str:
+        try:
+            async with postgres_session_factory.begin() as session:
+                service = PostsService(SQLAlchemyPostRepository(session))
+                await service.create_semantic_contract(
+                    generation_id=generation.id,
+                    post_id=post.id,
+                    scope=scope,
+                    contract=candidate,
+                    expected_version=1,
+                )
+            return "written"
+        except SemanticContractHardFailError:
+            return "hard_fail"
+
+    try:
+        outcomes = await asyncio.gather(
+            write(contract("Škoda Fabia")),
+            write(contract("BMW")),
+        )
+        assert sorted(outcomes) == ["hard_fail", "written"]
+
+        async with postgres_session_factory() as session:
+            service = PostsService(SQLAlchemyPostRepository(session))
+            persisted, state = await service.get_semantic_contract(
+                generation_id=generation.id,
+                post_id=post.id,
+                scope=scope,
+            )
+            history = await service.list_workflow_state_versions(
+                generation_id=generation.id,
+                post_id=post.id,
+                scope=scope,
+            )
+            assert persisted.product in {"Škoda Fabia", "BMW"}
+            assert state.version == 2
+            assert [snapshot.version for snapshot in history] == [1, 2]
     finally:
         await _delete_post(postgres_session_factory, post.id)

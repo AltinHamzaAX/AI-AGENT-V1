@@ -17,7 +17,14 @@ from app.modules.posts.domain.exceptions import (
     PostGenerationNotFoundError,
     PostNotFoundError,
     PostSourceNotFoundError,
+    SemanticContractHardFailError,
+    SemanticContractNotFoundError,
     WorkflowStateConflictError,
+)
+from app.modules.posts.domain.semantic_contract import (
+    PostSemanticContract,
+    SemanticAssertions,
+    semantic_contract_violations,
 )
 from app.modules.posts.domain.state import (
     PostGenerationState,
@@ -192,6 +199,10 @@ class PostsService:
     ) -> PostGenerationState:
         if expected_version <= 0:
             raise ValueError("expected_version must be positive")
+        if section is PostWorkflowSection.SEMANTIC_CONTRACT:
+            raise SemanticContractHardFailError(
+                ("semantic_contract is protected; use the dedicated contract operation",)
+            )
         validated_value = validate_section_value(section, value)
         state = await self._repository.update_workflow_state(
             generation_id=generation_id,
@@ -212,6 +223,92 @@ class PostsService:
             raise PostGenerationNotFoundError
         raise WorkflowStateConflictError
 
+    async def create_semantic_contract(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+        contract: PostSemanticContract,
+        expected_version: int,
+    ) -> tuple[PostSemanticContract, PostGenerationState]:
+        if expected_version <= 0:
+            raise ValueError("expected_version must be positive")
+        current = await self.get_workflow_state(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        existing = self._semantic_contract_from_state(current, required=False)
+        if existing is not None:
+            if existing.fingerprint == contract.fingerprint:
+                return existing, current
+            raise SemanticContractHardFailError(
+                ("semantic_contract is immutable and cannot be replaced",)
+            )
+        if current.version != expected_version:
+            raise WorkflowStateConflictError
+
+        updated = await self._repository.update_workflow_state(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+            section=PostWorkflowSection.SEMANTIC_CONTRACT,
+            value=contract.to_dict(),
+            expected_version=expected_version,
+        )
+        if updated is not None:
+            return contract, updated
+
+        latest = await self.get_workflow_state(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        concurrent = self._semantic_contract_from_state(latest, required=False)
+        if concurrent is not None:
+            if concurrent.fingerprint == contract.fingerprint:
+                return concurrent, latest
+            raise SemanticContractHardFailError(
+                ("a different immutable semantic_contract already exists",)
+            )
+        raise WorkflowStateConflictError
+
+    async def get_semantic_contract(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> tuple[PostSemanticContract, PostGenerationState]:
+        state = await self.get_workflow_state(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        contract = self._semantic_contract_from_state(state, required=True)
+        if contract is None:  # pragma: no cover - required=True raises instead
+            raise SemanticContractNotFoundError
+        return contract, state
+
+    async def validate_semantic_assertions(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+        assertions: SemanticAssertions,
+    ) -> PostSemanticContract:
+        contract, _ = await self.get_semantic_contract(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        violations = semantic_contract_violations(contract, assertions)
+        if violations:
+            raise SemanticContractHardFailError(violations)
+        return contract
+
     async def list_workflow_state_versions(
         self,
         *,
@@ -227,3 +324,21 @@ class PostsService:
         if versions is None:
             raise PostGenerationNotFoundError
         return versions
+
+    @staticmethod
+    def _semantic_contract_from_state(
+        state: PostGenerationState,
+        *,
+        required: bool,
+    ) -> PostSemanticContract | None:
+        value = state.data[PostWorkflowSection.SEMANTIC_CONTRACT.value]
+        if not value:
+            if required:
+                raise SemanticContractNotFoundError
+            return None
+        try:
+            return PostSemanticContract.from_dict(value)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise SemanticContractHardFailError(
+                ("persisted semantic_contract failed integrity validation",)
+            ) from exc

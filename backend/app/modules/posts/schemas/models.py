@@ -10,6 +10,11 @@ from app.modules.posts.domain.enums import (
     GenerationStatus,
     PostWorkflowSection,
 )
+from app.modules.posts.domain.semantic_contract import (
+    PROTECTED_SCALAR_FIELDS,
+    PostSemanticContract,
+    SemanticAssertions,
+)
 from app.modules.posts.domain.state import (
     PostGenerationState,
     PostGenerationStateSnapshot,
@@ -168,3 +173,98 @@ class PostGenerationStateVersionRead(BaseModel):
             state=WorkflowStateData.model_validate(snapshot.data),
             created_at=snapshot.created_at,
         )
+
+
+class SemanticContractFields(BaseModel):
+    company: str | None = Field(default=None, max_length=500)
+    brand: str | None = Field(default=None, max_length=500)
+    product: str | None = Field(default=None, max_length=500)
+    primary_entity: str = Field(min_length=1, max_length=500)
+    goal: str = Field(min_length=1, max_length=500)
+    audience: str = Field(min_length=1, max_length=500)
+    market: str | None = Field(default=None, max_length=500)
+    location: str | None = Field(default=None, max_length=500)
+    offer: str | None = Field(default=None, max_length=500)
+    cta_intent: str = Field(min_length=1, max_length=500)
+    platform: str = Field(min_length=1, max_length=100)
+    language: str = Field(min_length=1, max_length=100)
+    required_facts: dict[str, str] = Field(default_factory=dict, max_length=100)
+    forbidden_claims: list[str] = Field(default_factory=list, max_length=100)
+    required_assets: list[UUID] = Field(default_factory=list, max_length=100)
+    constraints: list[str] = Field(default_factory=list, max_length=100)
+
+    def to_domain(self) -> PostSemanticContract:
+        return PostSemanticContract.create(**self.model_dump())
+
+
+class SemanticContractCreate(SemanticContractFields):
+    expected_version: int = Field(ge=1)
+
+    def to_domain(self) -> PostSemanticContract:
+        return PostSemanticContract.create(
+            **self.model_dump(exclude={"expected_version"}),
+        )
+
+
+class SemanticContractRead(SemanticContractFields):
+    contract_version: int
+    fingerprint: str
+
+    @classmethod
+    def from_domain(cls, contract: PostSemanticContract) -> Self:
+        return cls.model_validate(contract.to_dict())
+
+
+class SemanticContractStateRead(BaseModel):
+    state_version: int
+    contract: SemanticContractRead
+
+    @classmethod
+    def from_domain(
+        cls,
+        contract: PostSemanticContract,
+        state: PostGenerationState,
+    ) -> Self:
+        return cls(
+            state_version=state.version,
+            contract=SemanticContractRead.from_domain(contract),
+        )
+
+
+class SemanticAssertionsRequest(BaseModel):
+    contract_fingerprint: str | None = Field(default=None, min_length=64, max_length=64)
+    company: str | None = None
+    brand: str | None = None
+    product: str | None = None
+    primary_entity: str | None = None
+    goal: str | None = None
+    audience: str | None = None
+    market: str | None = None
+    location: str | None = None
+    offer: str | None = None
+    cta_intent: str | None = None
+    platform: str | None = None
+    language: str | None = None
+    required_facts: dict[str, str] = Field(default_factory=dict, max_length=100)
+    claims: list[str] = Field(default_factory=list, max_length=100)
+    used_assets: list[UUID] | None = Field(default=None, max_length=100)
+
+    def to_domain(self) -> SemanticAssertions:
+        protected_values = {
+            field_name: getattr(self, field_name)
+            for field_name in PROTECTED_SCALAR_FIELDS
+            if field_name in self.model_fields_set
+        }
+        return SemanticAssertions(
+            contract_fingerprint=self.contract_fingerprint,
+            protected_values=protected_values,
+            required_facts=self.required_facts,
+            claims=tuple(self.claims),
+            used_assets=tuple(self.used_assets) if self.used_assets is not None else None,
+        )
+
+
+class SemanticValidationRead(BaseModel):
+    valid: bool = True
+    decision: str = "CONTINUE"
+    fingerprint: str

@@ -35,6 +35,23 @@ exactly one section, validates whether it is an object or array, and uses an
 lets a worker resume from PostgreSQL after restart instead of relying on implicit
 LLM memory. Full snapshots are retained for every accepted version.
 
+## Semantic contract
+
+`PostSemanticContract` is the write-once semantic source of truth for one
+generation. It records company, brand, product, primary entity, goal, audience,
+market, location, offer, CTA intent, platform, language, required facts,
+forbidden claims, required assets, and constraints. Canonical JSON is hashed with
+SHA-256, and the stored fingerprint is verified whenever the contract is loaded.
+
+The generic workflow-state operation cannot mutate `semantic_contract`. Repeating
+the dedicated create operation with the same fingerprint is idempotent; trying to
+replace it with a different contract returns `SEMANTIC_CONTRACT_HARD_FAIL`.
+Downstream stages can submit only the semantic assertions they make. Comparison
+normalizes Unicode, case, and whitespace while preserving the exact persisted
+truth. Product/offer/fact drift, a forbidden claim, a missing required asset, or
+a mismatched fingerprint is a hard failure. The future Supervisor may route on
+this structured decision but does not own or rewrite the contract.
+
 Other modules must enter Posts through a public module-level application service,
 such as `PostGenerationService`. They must not import Posts agents, tools, or
 orchestration internals.
