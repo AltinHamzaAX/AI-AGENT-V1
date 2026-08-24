@@ -253,6 +253,21 @@ def _build_brief(
                 evidence=evidence.get(field_name),
             )
 
+    if (
+        values["product_service"] is not None
+        and values["brand"] is not None
+        and _normalize_text(values["product_service"]) == _normalize_text(values["brand"])
+        and not _evidence_declares_product(evidence.get("product_service"))
+    ):
+        values["product_service"] = None
+    if (
+        values["business"] is not None
+        and values["brand"] is not None
+        and _normalize_text(values["business"]) == _normalize_text(values["brand"])
+        and not _evidence_declares_business(evidence.get("business"))
+    ):
+        values["business"] = None
+
     if values["goal"] is None and _has_marker(values["cta_intent"], _GOAL_MARKERS):
         values["goal"] = values["cta_intent"]
         values["cta_intent"] = None
@@ -403,6 +418,44 @@ def _has_marker(value: Any, markers: frozenset[str]) -> bool:
         token.strip(".,!?;:()[]{}\"'") for token in _normalize_text(value).split()
     }
     return bool(tokens & markers)
+
+
+def _evidence_declares_product(evidence: Any) -> bool:
+    if not isinstance(evidence, str):
+        return False
+    tokens = set(_normalize_text(evidence).split())
+    return bool(
+        tokens
+        & {
+            "biznes",
+            "business",
+            "product",
+            "produkti",
+            "produkt",
+            "service",
+            "sherbim",
+            "sherbimi",
+        }
+    )
+
+
+def _evidence_declares_business(evidence: Any) -> bool:
+    if not isinstance(evidence, str):
+        return False
+    tokens = set(_normalize_text(evidence).split())
+    return bool(
+        tokens
+        & {
+            "agency",
+            "agjenci",
+            "biznes",
+            "biznesi",
+            "business",
+            "company",
+            "kompani",
+            "kompania",
+        }
+    )
 
 
 def _extract_platform(source: ClientUnderstandingInput) -> str | None:

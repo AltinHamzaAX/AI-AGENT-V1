@@ -107,6 +107,13 @@ captures business, brand, product/service, objective, audience, market,
 location, platform, language, offer, CTA intent, style preferences, constraints,
 assets, and missing fields.
 
+The deterministic Missing Information & Clarification Engine evaluates those
+missing fields immediately after understanding. It persists classifications and
+at most three critical questions under `brief.clarification`. Optional,
+inferable, and researchable gaps do not interrupt the user. The Supervisor reads
+the plan and blocks only when critical clarification is pending; it does not own
+the classification policy.
+
 The provider is asked for strict JSON through the LLM interface. Pydantic rejects
 unknown fields, so this stage cannot silently add positioning, marketing
 strategy, creative concepts, copy, or design direction. Verified project facts

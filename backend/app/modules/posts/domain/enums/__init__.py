@@ -48,9 +48,24 @@ class PostWorkflowSection(StrEnum):
     REVISION_HISTORY = "revision_history"
 
 
+class UnderstandingField(StrEnum):
+    BUSINESS = "business"
+    BRAND = "brand"
+    PRODUCT_SERVICE = "product_service"
+    GOAL = "goal"
+    AUDIENCE = "audience"
+    MARKET = "market"
+    LOCATION = "location"
+    PLATFORM = "platform"
+    LANGUAGE = "language"
+    OFFER = "offer"
+    CTA_INTENT = "cta_intent"
+
+
 __all__ = [
     "GenerationArtifactKind",
     "GenerationJobStatus",
     "GenerationStatus",
     "PostWorkflowSection",
+    "UnderstandingField",
 ]

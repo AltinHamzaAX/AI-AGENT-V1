@@ -17,6 +17,7 @@ from app.modules.posts.agents.client_understanding import (  # noqa: E402
     register_client_understanding_agent,
 )
 from app.modules.posts.agents.framework import AgentRuntime  # noqa: E402
+from app.modules.posts.domain.clarification import ClarificationEngine  # noqa: E402
 from app.modules.posts.tools import ToolRegistry  # noqa: E402
 
 DEFAULT_MESSAGE = (
@@ -56,7 +57,9 @@ async def _run(message: str) -> None:
         ),
     )
 
-    print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    brief = result.model_dump(mode="json")
+    brief["clarification"] = ClarificationEngine().evaluate(result).model_dump(mode="json")
+    print(json.dumps(brief, ensure_ascii=False, indent=2))
 
 
 def main() -> None:

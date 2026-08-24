@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from app.modules.posts.domain.clarification import ClarificationPlan
 from app.modules.posts.domain.enums import PostWorkflowSection
 from app.modules.posts.domain.state import validate_workflow_state
 
@@ -290,6 +291,9 @@ class PostSupervisor:
         invalidated = set(progress["invalidated_stages"])
         requested_skips = set(progress["requested_skips"])
         attempts = progress["stage_attempts"]
+        clarification = _clarification_decision(state, completed | skipped)
+        if clarification is not None:
+            return clarification
         for policy in self._plan.stages:
             name = policy.stage.value
             if name in completed or name in skipped:
@@ -549,6 +553,30 @@ def _pending_revision_target(state: dict[str, Any]) -> SupervisorStage | None:
     if not isinstance(target, str):
         raise ValueError("Pending revision must declare target_stage")
     return SupervisorStage(target)
+
+
+def _clarification_decision(
+    state: dict[str, Any],
+    completed_or_skipped: set[str],
+) -> SupervisorDecision | None:
+    if SupervisorStage.CLIENT_UNDERSTANDING.value not in completed_or_skipped:
+        return None
+    brief = state[PostWorkflowSection.BRIEF.value]
+    raw = brief.get("clarification")
+    if raw is None:
+        return None
+    plan = ClarificationPlan.model_validate(raw)
+    if not plan.requires_user_input:
+        return None
+    return SupervisorDecision(
+        action=SupervisorAction.STOP,
+        next_stage=SupervisorStage.CLIENT_UNDERSTANDING,
+        reason="critical client information requires clarification",
+        required_inputs=tuple(
+            f"clarification:{question.field.value}" for question in plan.questions
+        ),
+        state_requirements=(PostWorkflowSection.BRIEF,),
+    )
 
 
 def _append_unique(values: list[str], value: str) -> list[str]:

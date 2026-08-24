@@ -99,6 +99,12 @@ factual `brief` section: business, brand, product/service, goal, audience,
 market/location, platform/language, offer, CTA intent, style preferences,
 constraints, exact asset references, and explicitly missing fields.
 
+The deterministic Clarification Engine classifies every missing field as
+`CRITICAL`, `OPTIONAL`, `INFERABLE`, or `RESEARCHABLE`. Only critical facts
+produce user-facing questions (at most three). Its plan is persisted under
+`brief.clarification`; the Supervisor pauses before downstream work only when
+that plan declares `requires_user_input=true`.
+
 Verified project values override model extraction, and attachment identity is
 rebuilt deterministically from the input rather than trusted to the model. Logo,
 product, vehicle, and packaging assets are marked for identity preservation.
