@@ -3,7 +3,11 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from app.modules.posts.domain.enums import GenerationArtifactKind, GenerationStatus
+from app.modules.posts.domain.enums import (
+    GenerationArtifactKind,
+    GenerationJobStatus,
+    GenerationStatus,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +33,9 @@ class PostGeneration:
     post_id: UUID
     attempt: int
     status: GenerationStatus
+    job_id: UUID
+    job_status: GenerationJobStatus
+    deduplicated: bool
     created_at: datetime
     updated_at: datetime
 

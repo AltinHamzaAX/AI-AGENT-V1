@@ -42,6 +42,13 @@ by a canonical SHA-256 fingerprint. Downstream assertions can be checked without
 an LLM call; product/fact drift, forbidden claims, missing required assets, or a
 fingerprint mismatch produce a structured `SEMANTIC_CONTRACT_HARD_FAIL`.
 
+Generation requests atomically create a PostgreSQL-backed job and return its
+`job_id`. An optional `Idempotency-Key` prevents duplicate generation attempts.
+The worker runtime claims jobs with expiring leases, applies timeout and bounded
+retry policies, and persists `completed`, `failed`, or `dead` outcomes. Expired
+leases are reclaimable after process restart; the Post Supervisor is connected
+through the `GenerationExecutor` boundary in its own ticket.
+
 ## Agent and tool framework
 
 Posts agents execute through `AgentRuntime`; tools are available only through a

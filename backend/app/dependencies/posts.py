@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.infrastructure.database.repositories.posts import SQLAlchemyPostRepository
 from app.infrastructure.database.session import get_db_transaction
 from app.modules.posts.domain.entities import PostScope
@@ -20,7 +21,12 @@ def get_post_scope(
 def get_posts_service(
     session: Annotated[AsyncSession, Depends(get_db_transaction)],
 ) -> PostsService:
-    return PostsService(SQLAlchemyPostRepository(session))
+    settings = get_settings()
+    return PostsService(
+        SQLAlchemyPostRepository(session),
+        generation_job_max_attempts=settings.generation_job_max_attempts,
+        generation_job_timeout_seconds=settings.generation_job_timeout_seconds,
+    )
 
 
 PostScopeDependency = Annotated[PostScope, Depends(get_post_scope)]

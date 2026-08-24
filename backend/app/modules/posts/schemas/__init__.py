@@ -2,6 +2,7 @@
 
 from app.modules.posts.schemas.models import (
     GenerationArtifactRead,
+    GenerationJobRead,
     PostCreate,
     PostGenerationRead,
     PostGenerationStateRead,
@@ -18,6 +19,7 @@ from app.modules.posts.schemas.models import (
 
 __all__ = [
     "GenerationArtifactRead",
+    "GenerationJobRead",
     "PostCreate",
     "PostGenerationRead",
     "PostGenerationStateRead",

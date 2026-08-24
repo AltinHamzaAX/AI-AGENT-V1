@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from hashlib import sha256
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -21,6 +22,7 @@ from app.modules.posts.domain.exceptions import (
     SemanticContractNotFoundError,
     WorkflowStateConflictError,
 )
+from app.modules.posts.domain.jobs import GenerationJob
 from app.modules.posts.domain.semantic_contract import (
     PostSemanticContract,
     SemanticAssertions,
@@ -35,8 +37,16 @@ from app.modules.posts.repositories import PostRepository
 
 
 class PostsService:
-    def __init__(self, repository: PostRepository) -> None:
+    def __init__(
+        self,
+        repository: PostRepository,
+        *,
+        generation_job_max_attempts: int = 3,
+        generation_job_timeout_seconds: int = 900,
+    ) -> None:
         self._repository = repository
+        self._generation_job_max_attempts = generation_job_max_attempts
+        self._generation_job_timeout_seconds = generation_job_timeout_seconds
 
     async def create_post(
         self,
@@ -73,11 +83,40 @@ class PostsService:
         *,
         post_id: UUID,
         scope: PostScope,
+        idempotency_key: str | None = None,
     ) -> PostGeneration:
-        generation = await self._repository.create_generation(post_id=post_id, scope=scope)
+        request_key = idempotency_key.strip() if idempotency_key else uuid4().hex
+        if len(request_key) > 200:
+            raise ValueError("Idempotency-Key cannot exceed 200 characters")
+        scoped_key = sha256(
+            f"{scope.user_id}:{scope.project_id}:{post_id}:{request_key}".encode()
+        ).hexdigest()
+        generation = await self._repository.create_generation(
+            post_id=post_id,
+            scope=scope,
+            idempotency_key=scoped_key,
+            max_attempts=self._generation_job_max_attempts,
+            timeout_seconds=self._generation_job_timeout_seconds,
+        )
         if generation is None:
             raise PostNotFoundError
         return generation
+
+    async def get_generation_job(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> GenerationJob:
+        job = await self._repository.get_generation_job(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        if job is None:
+            raise PostGenerationNotFoundError
+        return job
 
     async def list_generations(
         self,

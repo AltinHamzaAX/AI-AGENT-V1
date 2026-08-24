@@ -1,6 +1,7 @@
 from functools import lru_cache
+from typing import Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +27,19 @@ class Settings(BaseSettings):
     database_url: str = Field(repr=False)
 
     redis_url: str = Field(repr=False)
+    generation_job_max_attempts: int = Field(default=3, gt=0)
+    generation_job_timeout_seconds: int = Field(default=900, gt=0)
+    generation_job_lease_seconds: int = Field(default=960, gt=0)
+    generation_job_retry_backoff_seconds: int = Field(default=30, ge=0)
+    generation_worker_poll_seconds: float = Field(default=2.0, gt=0)
+
+    @model_validator(mode="after")
+    def validate_generation_job_lease(self) -> Self:
+        if self.generation_job_lease_seconds <= self.generation_job_timeout_seconds:
+            raise ValueError(
+                "GENERATION_JOB_LEASE_SECONDS must exceed GENERATION_JOB_TIMEOUT_SECONDS"
+            )
+        return self
 
     storage_provider: str = "s3"
     s3_endpoint: str

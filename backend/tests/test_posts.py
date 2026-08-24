@@ -131,7 +131,9 @@ async def test_standalone_post_supports_multiple_ordered_generation_attempts(
         assert response.status_code == 201
         generation = response.json()
         assert generation["attempt"] == expected_attempt
-        assert generation["status"] == "pending"
+        assert generation["status"] == "queued"
+        assert generation["job_status"] == "queued"
+        assert generation["deduplicated"] is False
         created.append(generation)
 
     listed = await post_client.get(

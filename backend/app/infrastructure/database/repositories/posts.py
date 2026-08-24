@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.conversations import ConversationModel
 from app.models.posts import (
     GenerationArtifactModel,
+    PostGenerationJobModel,
     PostGenerationModel,
     PostGenerationStateModel,
     PostGenerationStateVersionModel,
@@ -23,9 +24,11 @@ from app.modules.posts.domain.entities import (
 )
 from app.modules.posts.domain.enums import (
     GenerationArtifactKind,
+    GenerationJobStatus,
     GenerationStatus,
     PostWorkflowSection,
 )
+from app.modules.posts.domain.jobs import GenerationJob
 from app.modules.posts.domain.state import (
     WORKFLOW_STATE_SCHEMA_VERSION,
     PostGenerationState,
@@ -47,14 +50,40 @@ def _post(model: PostModel) -> Post:
     )
 
 
-def _generation(model: PostGenerationModel) -> PostGeneration:
+def _generation(
+    model: PostGenerationModel,
+    job: PostGenerationJobModel,
+    *,
+    deduplicated: bool = False,
+) -> PostGeneration:
     return PostGeneration(
         id=model.id,
         post_id=model.post_id,
         attempt=model.attempt,
         status=GenerationStatus(model.status),
+        job_id=job.id,
+        job_status=GenerationJobStatus(job.status),
+        deduplicated=deduplicated,
         created_at=model.created_at,
         updated_at=model.updated_at,
+    )
+
+
+def _job(model: PostGenerationJobModel) -> GenerationJob:
+    return GenerationJob(
+        id=model.id,
+        generation_id=model.generation_id,
+        status=GenerationJobStatus(model.status),
+        attempts=model.attempts,
+        max_attempts=model.max_attempts,
+        timeout_seconds=model.timeout_seconds,
+        available_at=model.available_at,
+        leased_until=model.leased_until,
+        worker_id=model.worker_id,
+        last_error_code=model.last_error_code,
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+        completed_at=model.completed_at,
     )
 
 
@@ -146,10 +175,27 @@ class SQLAlchemyPostRepository:
         *,
         post_id: UUID,
         scope: PostScope,
+        idempotency_key: str,
+        max_attempts: int,
+        timeout_seconds: int,
     ) -> PostGeneration | None:
         post = await self._find_post(post_id=post_id, scope=scope, for_update=True)
         if post is None:
             return None
+        existing_statement = (
+            select(PostGenerationModel, PostGenerationJobModel)
+            .join(
+                PostGenerationJobModel,
+                PostGenerationJobModel.generation_id == PostGenerationModel.id,
+            )
+            .where(
+                PostGenerationModel.post_id == post_id,
+                PostGenerationJobModel.idempotency_key == idempotency_key,
+            )
+        )
+        existing = (await self._session.execute(existing_statement)).one_or_none()
+        if existing is not None:
+            return _generation(existing[0], existing[1], deduplicated=True)
         attempt_statement = select(
             func.coalesce(func.max(PostGenerationModel.attempt), 0) + 1
         ).where(PostGenerationModel.post_id == post_id)
@@ -157,11 +203,18 @@ class SQLAlchemyPostRepository:
         model = PostGenerationModel(
             post_id=post_id,
             attempt=attempt,
-            status=GenerationStatus.PENDING.value,
+            status=GenerationStatus.QUEUED.value,
         )
         post.updated_at = datetime.now(UTC)
         self._session.add(model)
         await self._session.flush()
+        job_model = PostGenerationJobModel(
+            generation_id=model.id,
+            idempotency_key=idempotency_key,
+            status=GenerationJobStatus.QUEUED.value,
+            max_attempts=max_attempts,
+            timeout_seconds=timeout_seconds,
+        )
         initial_state = empty_workflow_state()
         state_model = PostGenerationStateModel(
             generation_id=model.id,
@@ -176,10 +229,11 @@ class SQLAlchemyPostRepository:
             changed_section=None,
             state=deepcopy(initial_state),
         )
-        self._session.add_all((state_model, version_model))
+        self._session.add_all((job_model, state_model, version_model))
         await self._session.flush()
         await self._session.refresh(model)
-        return _generation(model)
+        await self._session.refresh(job_model)
+        return _generation(model, job_model)
 
     async def get_generation(
         self,
@@ -193,7 +247,10 @@ class SQLAlchemyPostRepository:
             post_id=post_id,
             scope=scope,
         )
-        return _generation(model) if model else None
+        if model is None:
+            return None
+        job = await self._find_generation_job(generation_id=model.id)
+        return _generation(model, job) if job else None
 
     async def list_generations(
         self,
@@ -209,7 +266,12 @@ class SQLAlchemyPostRepository:
             .order_by(PostGenerationModel.attempt)
         )
         models = (await self._session.execute(statement)).scalars().all()
-        return tuple(_generation(model) for model in models)
+        generations: list[PostGeneration] = []
+        for model in models:
+            job = await self._find_generation_job(generation_id=model.id)
+            if job is not None:
+                generations.append(_generation(model, job))
+        return tuple(generations)
 
     async def update_generation_status(
         self,
@@ -231,7 +293,27 @@ class SQLAlchemyPostRepository:
         model.updated_at = datetime.now(UTC)
         await self._session.flush()
         await self._session.refresh(model)
-        return _generation(model)
+        job = await self._find_generation_job(generation_id=model.id)
+        return _generation(model, job) if job else None
+
+    async def get_generation_job(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> GenerationJob | None:
+        if (
+            await self._find_generation(
+                generation_id=generation_id,
+                post_id=post_id,
+                scope=scope,
+            )
+            is None
+        ):
+            return None
+        model = await self._find_generation_job(generation_id=generation_id)
+        return _job(model) if model else None
 
     async def add_artifact(
         self,
@@ -428,6 +510,16 @@ class SQLAlchemyPostRepository:
         )
         if for_update:
             statement = statement.with_for_update()
+        return (await self._session.execute(statement)).scalar_one_or_none()
+
+    async def _find_generation_job(
+        self,
+        *,
+        generation_id: UUID,
+    ) -> PostGenerationJobModel | None:
+        statement = select(PostGenerationJobModel).where(
+            PostGenerationJobModel.generation_id == generation_id
+        )
         return (await self._session.execute(statement)).scalar_one_or_none()
 
     async def _find_workflow_state(

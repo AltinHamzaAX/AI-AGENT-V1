@@ -1,6 +1,7 @@
 import asyncio
 import os
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -9,9 +10,13 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.infrastructure.database.repositories.generation_jobs import (
+    SQLAlchemyGenerationJobRepository,
+)
 from app.infrastructure.database.repositories.posts import SQLAlchemyPostRepository
 from app.models.posts import (
     GenerationArtifactModel,
+    PostGenerationJobModel,
     PostGenerationModel,
     PostGenerationStateModel,
     PostGenerationStateVersionModel,
@@ -80,7 +85,99 @@ async def test_postgres_concurrent_generation_attempts_are_unique_and_ordered(
             service = PostsService(SQLAlchemyPostRepository(session))
             generations = await service.list_generations(post_id=post.id, scope=scope)
             assert [generation.attempt for generation in generations] == list(range(1, 21))
-            assert all(generation.status.value == "pending" for generation in generations)
+            assert all(generation.status.value == "queued" for generation in generations)
+    finally:
+        await _delete_post(postgres_session_factory, post.id)
+
+
+@pytest.mark.asyncio
+async def test_postgres_idempotency_and_claim_lock_prevent_duplicates(
+    postgres_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    scope = PostScope(user_id=uuid4(), project_id=uuid4())
+    async with postgres_session_factory.begin() as session:
+        service = PostsService(SQLAlchemyPostRepository(session))
+        post = await service.create_post(
+            scope=scope,
+            conversation_id=None,
+            campaign_id=None,
+            title="Idempotent concurrent generation",
+        )
+
+    async def request_same_generation() -> tuple[UUID, UUID]:
+        async with postgres_session_factory.begin() as session:
+            service = PostsService(SQLAlchemyPostRepository(session))
+            generation = await service.request_generation(
+                post_id=post.id,
+                scope=scope,
+                idempotency_key="same-client-request",
+            )
+            return generation.id, generation.job_id
+
+    async def claim(job_id: UUID, worker_id: str) -> UUID | None:
+        async with postgres_session_factory.begin() as session:
+            job = await SQLAlchemyGenerationJobRepository(session).claim_job(
+                job_id=job_id,
+                worker_id=worker_id,
+                lease_seconds=30,
+            )
+            return job.id if job else None
+
+    try:
+        results = await asyncio.gather(*(request_same_generation() for _ in range(10)))
+        assert len(set(results)) == 1
+        generation_id, job_id = results[0]
+        async with postgres_session_factory.begin() as session:
+            job = await session.get(PostGenerationJobModel, job_id)
+            assert job is not None and job.generation_id == generation_id
+            job.available_at = datetime(2000, 1, 1, tzinfo=UTC)
+        claimed = await asyncio.gather(
+            *(claim(job_id, f"ticket10-test-claim-{index}") for index in range(10))
+        )
+        assert sum(job_id is not None for job_id in claimed) == 1
+    finally:
+        await _delete_post(postgres_session_factory, post.id)
+
+
+@pytest.mark.asyncio
+async def test_postgres_expired_worker_lease_is_reclaimable(
+    postgres_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    scope = PostScope(user_id=uuid4(), project_id=uuid4())
+    async with postgres_session_factory.begin() as session:
+        service = PostsService(SQLAlchemyPostRepository(session))
+        post = await service.create_post(
+            scope=scope,
+            conversation_id=None,
+            campaign_id=None,
+            title="Lease recovery",
+        )
+        generation = await service.request_generation(post_id=post.id, scope=scope)
+
+    async with postgres_session_factory.begin() as session:
+        job = await session.get(PostGenerationJobModel, generation.job_id)
+        assert job is not None
+        job.available_at = datetime(2000, 1, 1, tzinfo=UTC)
+
+    try:
+        async with postgres_session_factory.begin() as session:
+            first = await SQLAlchemyGenerationJobRepository(session).claim_next(
+                worker_id="worker-before-restart",
+                lease_seconds=30,
+            )
+            assert first is not None and first.id == generation.job_id
+        async with postgres_session_factory.begin() as session:
+            job = await session.get(PostGenerationJobModel, generation.job_id)
+            assert job is not None
+            job.leased_until = datetime.now(UTC) - timedelta(seconds=1)
+        async with postgres_session_factory.begin() as session:
+            recovered = await SQLAlchemyGenerationJobRepository(session).claim_next(
+                worker_id="worker-after-restart",
+                lease_seconds=30,
+            )
+            assert recovered is not None
+            assert recovered.id == generation.job_id
+            assert recovered.attempts == 2
     finally:
         await _delete_post(postgres_session_factory, post.id)
 
@@ -189,10 +286,16 @@ async def test_postgres_constraints_and_post_cascade_cover_generations_and_artif
                 PostGenerationStateVersionModel.generation_id == generation.id
             )
         )
+        job_count = await session.scalar(
+            select(func.count(PostGenerationJobModel.id)).where(
+                PostGenerationJobModel.generation_id == generation.id
+            )
+        )
     assert generation_count == 0
     assert artifact_count == 0
     assert state_count == 0
     assert state_version_count == 0
+    assert job_count == 0
 
 
 @pytest.mark.asyncio

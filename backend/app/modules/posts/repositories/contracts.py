@@ -13,6 +13,7 @@ from app.modules.posts.domain.enums import (
     GenerationStatus,
     PostWorkflowSection,
 )
+from app.modules.posts.domain.jobs import GenerationJob
 from app.modules.posts.domain.state import (
     PostGenerationState,
     PostGenerationStateSnapshot,
@@ -43,7 +44,18 @@ class PostRepository(Protocol):
         *,
         post_id: UUID,
         scope: PostScope,
+        idempotency_key: str,
+        max_attempts: int,
+        timeout_seconds: int,
     ) -> PostGeneration | None: ...
+
+    async def get_generation_job(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> GenerationJob | None: ...
 
     async def get_generation(
         self,
@@ -120,3 +132,24 @@ class PostRepository(Protocol):
         post_id: UUID,
         scope: PostScope,
     ) -> Sequence[PostGenerationStateSnapshot] | None: ...
+
+
+class GenerationJobRepository(Protocol):
+    async def claim_next(
+        self,
+        *,
+        worker_id: str,
+        lease_seconds: int,
+    ) -> GenerationJob | None: ...
+
+    async def complete(self, *, job_id: UUID, worker_id: str) -> GenerationJob | None: ...
+
+    async def fail(
+        self,
+        *,
+        job_id: UUID,
+        worker_id: str,
+        error_code: str,
+        retryable: bool,
+        retry_delay_seconds: int,
+    ) -> GenerationJob | None: ...

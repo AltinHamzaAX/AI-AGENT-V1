@@ -1,5 +1,7 @@
 from typing import Protocol
 
+from app.modules.posts.repositories import GenerationJobRepository
 
-class JobQueue(Protocol):
-    async def enqueue(self, job_name: str, payload: dict[str, object]) -> str: ...
+
+class JobQueue(GenerationJobRepository, Protocol):
+    """Durable queue port; PostgreSQL leases are the current adapter."""
