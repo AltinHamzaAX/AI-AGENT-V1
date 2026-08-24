@@ -1,0 +1,42 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f7f7f4;
+  background: #101411;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button { font: inherit; }
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background:
+    radial-gradient(circle at 20% 15%, rgba(80, 200, 140, 0.14), transparent 30rem),
+    radial-gradient(circle at 85% 80%, rgba(119, 91, 220, 0.12), transparent 28rem),
+    #101411;
+}
+
+.hero { width: min(42rem, 100%); }
+.eyebrow { color: #7ee2aa; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+h1 { margin: .4rem 0 1rem; font-size: clamp(2.8rem, 8vw, 5.5rem); line-height: .95; letter-spacing: -.055em; }
+.intro { color: #adb8b0; font-size: 1.15rem; line-height: 1.7; }
+
+.status-card {
+  width: fit-content;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-top: 2.25rem;
+  padding: .85rem 1rem;
+  border: 1px solid #2e3a32;
+  border-radius: .8rem;
+  background: rgba(24, 31, 26, .82);
+}
+
+.status-dot { width: .6rem; height: .6rem; border-radius: 50%; background: #55d68b; box-shadow: 0 0 1rem #55d68b; }
+.status-card.error .status-dot { background: #ef7b72; box-shadow: 0 0 1rem #ef7b72; }
+.status-card button { color: #101411; background: #f7f7f4; border: 0; border-radius: .45rem; padding: .35rem .65rem; cursor: pointer; }

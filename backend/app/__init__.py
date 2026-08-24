@@ -1,0 +1,1 @@
+"""Promotiva backend application."""

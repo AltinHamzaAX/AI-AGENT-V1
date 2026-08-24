@@ -1,0 +1,148 @@
+name: promotiva
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      NUXT_PUBLIC_API_BASE_URL: ${NUXT_PUBLIC_API_BASE_URL}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+      - frontend-nuxt:/app/.nuxt
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - promotiva-network
+
+  api:
+    build:
+      context: ./backend
+    command: uvicorn app.main:app --host ${API_HOST:-0.0.0.0} --port ${API_PORT:-8000} --reload
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/migrations:/app/migrations
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - promotiva-network
+
+  worker:
+    build:
+      context: ./backend
+    command: python -m app.workers.worker
+    env_file:
+      - .env
+    volumes:
+      - ./backend/app:/app/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - promotiva-network
+
+  db:
+    image: pgvector/pgvector:0.8.1-pg17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/10-pgvector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - promotiva-network
+
+  redis:
+    image: redis:8.2.1-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - promotiva-network
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    networks:
+      - promotiva-network
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET}
+    entrypoint: ["/bin/sh", "/init/minio-init.sh"]
+    volumes:
+      - ./docker/minio/init.sh:/init/minio-init.sh:ro
+    restart: "no"
+    networks:
+      - promotiva-network
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  frontend-node-modules:
+  frontend-nuxt:
+
+networks:
+  promotiva-network:
+    name: promotiva-network
+    driver: bridge

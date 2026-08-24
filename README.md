@@ -1,0 +1,87 @@
+# Promotiva
+
+Promotiva is the foundation for an AI marketing platform with a conversational
+interface and two future bounded business modules: Posts and Campaigns. This
+repository currently provides application bootstraps, infrastructure boundaries,
+local containers, and health diagnostics only. It intentionally contains no AI
+agents, marketing workflows, prompts, or business database schema.
+
+## Prerequisites
+
+- Docker Desktop with Docker Compose v2
+- Optional for host development: Python 3.12/3.13 with `uv`, and Node.js 24 with npm
+
+## Start the complete stack
+
+A local `.env` with generated development-only credentials is created for this
+checkout and ignored by Git. For a fresh clone, copy the safe template and replace
+each `change_me` value before starting:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Run in detached mode with `docker compose up --build -d`. Inspect status and logs:
+
+```bash
+docker compose ps
+docker compose logs -f api
+```
+
+Open the frontend at <http://localhost:3000>. API liveness is available at
+<http://localhost:8000/api/health>, and dependency readiness at
+<http://localhost:8000/api/health/ready>.
+
+## Service ports
+
+| Service | Port | Purpose |
+| --- | ---: | --- |
+| Frontend | 3000 | Nuxt development UI |
+| API | 8000 | FastAPI and OpenAPI |
+| PostgreSQL | 5432 | PostgreSQL 17 + pgvector |
+| Redis | 6379 | cache and future queue coordination |
+| MinIO S3 | 9000 | object storage API |
+| MinIO console | 9001 | local storage administration |
+
+The worker exposes no port. `minio-init` creates the configured private bucket and
+then exits successfully; rerunning it is safe.
+
+## Stop and reset
+
+```bash
+docker compose down
+```
+
+To also delete PostgreSQL, Redis, MinIO, and development dependency volumes:
+
+```bash
+docker compose down -v
+```
+
+The `-v` command permanently removes locally persisted Docker data.
+
+## Host checks
+
+```bash
+cd backend
+uv sync
+uv run pytest
+uv run ruff check .
+
+cd ../frontend
+npm ci
+npm run typecheck
+```
+
+## Module boundaries
+
+Promotiva is a modular monolith. HTTP routes depend on application services, which
+depend on module contracts and infrastructure abstractions. Posts and Campaigns
+own their internals. Campaigns may later request Posts work only through a public
+Posts service contract, never by importing Posts agents or tools. Shared concepts
+belong in `app/shared` only when both modules genuinely use them.
+
+See [architecture overview](docs/architecture/overview.md),
+[Posts boundaries](docs/architecture/posts.md), and
+[Campaigns boundaries](docs/architecture/campaigns.md).
