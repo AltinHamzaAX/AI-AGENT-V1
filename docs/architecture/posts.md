@@ -52,6 +52,27 @@ truth. Product/offer/fact drift, a forbidden claim, a missing required asset, or
 a mismatched fingerprint is a hard failure. The future Supervisor may route on
 this structured decision but does not own or rewrite the contract.
 
+## Agent framework and tool registry
+
+The internal agent framework is deny-by-default. `AgentDefinition` declares a
+stable name, role, Pydantic input/output schemas, allowed tools, timeout, and
+retry policy. `ToolDefinition` declares its category, schemas, allowed agents,
+timeout/retry policy, and security capabilities. Registration names are unique.
+
+Agents do not receive the registry or raw tool handlers. `AgentRuntime` gives a
+registered agent a gateway bound to its internal identity token and invocation
+context. A call proceeds only when both allowlists agree and mandatory capability
+restrictions pass. In particular, `creative_director` cannot invoke final
+approval, database mutation, or asset replacement capabilities. A denial never
+executes or retries the handler and is emitted as `posts.tool.denied` with agent,
+tool, reason, and correlation identifiers—but never the payload.
+
+Agent and tool inputs and outputs are schema-validated. Per-component timeouts
+and bounded retry policies cover transient errors and timeouts; authorization
+failures are never retryable. This ticket provides the execution contract only:
+specialist behavior, provider adapters, Supervisor routing, and workflow jobs are
+implemented by later tickets.
+
 Other modules must enter Posts through a public module-level application service,
 such as `PostGenerationService`. They must not import Posts agents, tools, or
 orchestration internals.
