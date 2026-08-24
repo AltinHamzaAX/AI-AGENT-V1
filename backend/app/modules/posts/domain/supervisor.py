@@ -133,6 +133,7 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
     (
         SupervisorStagePolicy(
             SupervisorStage.CLIENT_UNDERSTANDING,
+            required_sections=(PostWorkflowSection.CONVERSATION_CONTEXT,),
             output_sections=(PostWorkflowSection.BRIEF,),
         ),
         SupervisorStagePolicy(
