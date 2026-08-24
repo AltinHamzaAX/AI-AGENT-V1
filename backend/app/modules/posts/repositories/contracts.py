@@ -8,7 +8,15 @@ from app.modules.posts.domain.entities import (
     PostGeneration,
     PostScope,
 )
-from app.modules.posts.domain.enums import GenerationArtifactKind, GenerationStatus
+from app.modules.posts.domain.enums import (
+    GenerationArtifactKind,
+    GenerationStatus,
+    PostWorkflowSection,
+)
+from app.modules.posts.domain.state import (
+    PostGenerationState,
+    PostGenerationStateSnapshot,
+)
 
 
 class PostRepository(Protocol):
@@ -85,3 +93,30 @@ class PostRepository(Protocol):
         post_id: UUID,
         scope: PostScope,
     ) -> Sequence[GenerationArtifact] | None: ...
+
+    async def get_workflow_state(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> PostGenerationState | None: ...
+
+    async def update_workflow_state(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+        section: PostWorkflowSection,
+        value: Any,
+        expected_version: int,
+    ) -> PostGenerationState | None: ...
+
+    async def list_workflow_state_versions(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> Sequence[PostGenerationStateSnapshot] | None: ...

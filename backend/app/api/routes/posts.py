@@ -3,16 +3,21 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 
 from app.dependencies.posts import PostScopeDependency, PostsServiceDependency
+from app.modules.posts.domain.enums import PostWorkflowSection
 from app.modules.posts.domain.exceptions import (
     PostGenerationNotFoundError,
     PostNotFoundError,
     PostSourceNotFoundError,
+    WorkflowStateConflictError,
 )
 from app.modules.posts.schemas import (
     GenerationArtifactRead,
     PostCreate,
     PostGenerationRead,
+    PostGenerationStateRead,
+    PostGenerationStateVersionRead,
     PostRead,
+    WorkflowSectionWrite,
 )
 
 router = APIRouter()
@@ -98,3 +103,78 @@ async def list_generation_artifacts(
     except PostGenerationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Post generation not found") from exc
     return [GenerationArtifactRead.from_domain(artifact) for artifact in artifacts]
+
+
+@router.get(
+    "/{post_id}/generations/{generation_id}/state",
+    response_model=PostGenerationStateRead,
+)
+async def get_generation_state(
+    post_id: UUID,
+    generation_id: UUID,
+    scope: PostScopeDependency,
+    service: PostsServiceDependency,
+) -> PostGenerationStateRead:
+    try:
+        workflow_state = await service.get_workflow_state(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+    except PostGenerationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Post generation not found") from exc
+    return PostGenerationStateRead.from_domain(workflow_state)
+
+
+@router.get(
+    "/{post_id}/generations/{generation_id}/state/versions",
+    response_model=list[PostGenerationStateVersionRead],
+)
+async def list_generation_state_versions(
+    post_id: UUID,
+    generation_id: UUID,
+    scope: PostScopeDependency,
+    service: PostsServiceDependency,
+) -> list[PostGenerationStateVersionRead]:
+    try:
+        snapshots = await service.list_workflow_state_versions(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+    except PostGenerationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Post generation not found") from exc
+    return [PostGenerationStateVersionRead.from_domain(item) for item in snapshots]
+
+
+@router.patch(
+    "/{post_id}/generations/{generation_id}/state/{section}",
+    response_model=PostGenerationStateRead,
+)
+async def write_generation_state_section(
+    post_id: UUID,
+    generation_id: UUID,
+    section: PostWorkflowSection,
+    payload: WorkflowSectionWrite,
+    scope: PostScopeDependency,
+    service: PostsServiceDependency,
+) -> PostGenerationStateRead:
+    try:
+        workflow_state = await service.write_workflow_section(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+            section=section,
+            value=payload.value,
+            expected_version=payload.expected_version,
+        )
+    except PostGenerationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Post generation not found") from exc
+    except WorkflowStateConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Workflow state version conflict; read the latest state and retry",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return PostGenerationStateRead.from_domain(workflow_state)

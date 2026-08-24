@@ -125,3 +125,61 @@ class GenerationArtifactModel(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class PostGenerationStateModel(Base):
+    __tablename__ = "post_generation_states"
+    __table_args__ = (
+        CheckConstraint("schema_version > 0", name="positive_schema_version"),
+        CheckConstraint("version > 0", name="positive_version"),
+    )
+
+    generation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("post_generations.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[dict[str, Any]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class PostGenerationStateVersionModel(Base):
+    __tablename__ = "post_generation_state_versions"
+    __table_args__ = (
+        CheckConstraint("schema_version > 0", name="positive_schema_version"),
+        CheckConstraint("version > 0", name="positive_version"),
+        Index("ix_post_generation_state_versions_generation", "generation_id", "version"),
+    )
+
+    generation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("post_generations.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    changed_section: Mapped[str | None] = mapped_column(String(50))
+    state: Mapped[dict[str, Any]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )

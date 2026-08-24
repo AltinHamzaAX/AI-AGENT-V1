@@ -31,3 +31,7 @@ Posts business entities, statuses, schemas, repository ports, and application
 services live under `app/modules/posts`. SQLAlchemy models and adapters remain in
 infrastructure. `PostGeneration` owns the attempt number and lifecycle status;
 `Post` is the stable container shared by standalone and future Campaign callers.
+`PostGenerationState` is created atomically with each generation and persists the
+complete structured workflow independently from worker memory. Section-scoped
+writes use optimistic version checks and retain full snapshots for recovery and
+audit history.

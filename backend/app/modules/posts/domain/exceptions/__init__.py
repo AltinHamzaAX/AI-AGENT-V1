@@ -13,4 +13,13 @@ class PostGenerationNotFoundError(LookupError):
     pass
 
 
-__all__ = ["PostGenerationNotFoundError", "PostNotFoundError", "PostSourceNotFoundError"]
+class WorkflowStateConflictError(RuntimeError):
+    pass
+
+
+__all__ = [
+    "PostGenerationNotFoundError",
+    "PostNotFoundError",
+    "PostSourceNotFoundError",
+    "WorkflowStateConflictError",
+]

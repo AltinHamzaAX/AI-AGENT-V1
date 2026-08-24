@@ -8,11 +8,21 @@ from app.modules.posts.domain.entities import (
     PostGeneration,
     PostScope,
 )
-from app.modules.posts.domain.enums import GenerationArtifactKind, GenerationStatus
+from app.modules.posts.domain.enums import (
+    GenerationArtifactKind,
+    GenerationStatus,
+    PostWorkflowSection,
+)
 from app.modules.posts.domain.exceptions import (
     PostGenerationNotFoundError,
     PostNotFoundError,
     PostSourceNotFoundError,
+    WorkflowStateConflictError,
+)
+from app.modules.posts.domain.state import (
+    PostGenerationState,
+    PostGenerationStateSnapshot,
+    validate_section_value,
 )
 from app.modules.posts.repositories import PostRepository
 
@@ -153,3 +163,67 @@ class PostsService:
         if artifacts is None:
             raise PostGenerationNotFoundError
         return artifacts
+
+    async def get_workflow_state(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> PostGenerationState:
+        state = await self._repository.get_workflow_state(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        if state is None:
+            raise PostGenerationNotFoundError
+        return state
+
+    async def write_workflow_section(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+        section: PostWorkflowSection,
+        value: Any,
+        expected_version: int,
+    ) -> PostGenerationState:
+        if expected_version <= 0:
+            raise ValueError("expected_version must be positive")
+        validated_value = validate_section_value(section, value)
+        state = await self._repository.update_workflow_state(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+            section=section,
+            value=validated_value,
+            expected_version=expected_version,
+        )
+        if state is not None:
+            return state
+        current = await self._repository.get_workflow_state(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        if current is None:
+            raise PostGenerationNotFoundError
+        raise WorkflowStateConflictError
+
+    async def list_workflow_state_versions(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> Sequence[PostGenerationStateSnapshot]:
+        versions = await self._repository.list_workflow_state_versions(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        if versions is None:
+            raise PostGenerationNotFoundError
+        return versions

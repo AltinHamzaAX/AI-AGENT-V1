@@ -1,20 +1,38 @@
 from collections.abc import Sequence
+from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversations import ConversationModel
-from app.models.posts import GenerationArtifactModel, PostGenerationModel, PostModel
+from app.models.posts import (
+    GenerationArtifactModel,
+    PostGenerationModel,
+    PostGenerationStateModel,
+    PostGenerationStateVersionModel,
+    PostModel,
+)
 from app.modules.posts.domain.entities import (
     GenerationArtifact,
     Post,
     PostGeneration,
     PostScope,
 )
-from app.modules.posts.domain.enums import GenerationArtifactKind, GenerationStatus
+from app.modules.posts.domain.enums import (
+    GenerationArtifactKind,
+    GenerationStatus,
+    PostWorkflowSection,
+)
+from app.modules.posts.domain.state import (
+    WORKFLOW_STATE_SCHEMA_VERSION,
+    PostGenerationState,
+    PostGenerationStateSnapshot,
+    empty_workflow_state,
+    validate_workflow_state,
+)
 
 
 def _post(model: PostModel) -> Post:
@@ -52,6 +70,32 @@ def _artifact(model: GenerationArtifactModel) -> GenerationArtifact:
         width=model.width,
         height=model.height,
         metadata=dict(model.artifact_metadata),
+        created_at=model.created_at,
+    )
+
+
+def _workflow_state(model: PostGenerationStateModel) -> PostGenerationState:
+    return PostGenerationState(
+        generation_id=model.generation_id,
+        schema_version=model.schema_version,
+        version=model.version,
+        data=validate_workflow_state(model.state),
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
+
+
+def _workflow_snapshot(
+    model: PostGenerationStateVersionModel,
+) -> PostGenerationStateSnapshot:
+    return PostGenerationStateSnapshot(
+        generation_id=model.generation_id,
+        version=model.version,
+        schema_version=model.schema_version,
+        changed_section=(
+            PostWorkflowSection(model.changed_section) if model.changed_section else None
+        ),
+        data=validate_workflow_state(model.state),
         created_at=model.created_at,
     )
 
@@ -117,6 +161,22 @@ class SQLAlchemyPostRepository:
         )
         post.updated_at = datetime.now(UTC)
         self._session.add(model)
+        await self._session.flush()
+        initial_state = empty_workflow_state()
+        state_model = PostGenerationStateModel(
+            generation_id=model.id,
+            schema_version=WORKFLOW_STATE_SCHEMA_VERSION,
+            version=1,
+            state=deepcopy(initial_state),
+        )
+        version_model = PostGenerationStateVersionModel(
+            generation_id=model.id,
+            version=1,
+            schema_version=WORKFLOW_STATE_SCHEMA_VERSION,
+            changed_section=None,
+            state=deepcopy(initial_state),
+        )
+        self._session.add_all((state_model, version_model))
         await self._session.flush()
         await self._session.refresh(model)
         return _generation(model)
@@ -239,6 +299,99 @@ class SQLAlchemyPostRepository:
         models = (await self._session.execute(statement)).scalars().all()
         return tuple(_artifact(model) for model in models)
 
+    async def get_workflow_state(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> PostGenerationState | None:
+        model = await self._find_workflow_state(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        return _workflow_state(model) if model else None
+
+    async def update_workflow_state(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+        section: PostWorkflowSection,
+        value: Any,
+        expected_version: int,
+    ) -> PostGenerationState | None:
+        current = await self._find_workflow_state(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        if current is None or current.version != expected_version:
+            return None
+
+        next_state = validate_workflow_state(current.state)
+        next_state[section.value] = deepcopy(value)
+        next_version = expected_version + 1
+        now = datetime.now(UTC)
+        statement = (
+            update(PostGenerationStateModel)
+            .where(
+                PostGenerationStateModel.generation_id == generation_id,
+                PostGenerationStateModel.version == expected_version,
+            )
+            .values(
+                state=deepcopy(next_state),
+                version=next_version,
+                updated_at=now,
+            )
+        )
+        result = await self._session.execute(statement)
+        if result.rowcount != 1:
+            return None
+
+        snapshot = PostGenerationStateVersionModel(
+            generation_id=generation_id,
+            version=next_version,
+            schema_version=current.schema_version,
+            changed_section=section.value,
+            state=deepcopy(next_state),
+            created_at=now,
+        )
+        self._session.add(snapshot)
+        await self._session.flush()
+        updated = await self._find_workflow_state(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        return _workflow_state(updated) if updated else None
+
+    async def list_workflow_state_versions(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> Sequence[PostGenerationStateSnapshot] | None:
+        if (
+            await self._find_generation(
+                generation_id=generation_id,
+                post_id=post_id,
+                scope=scope,
+            )
+            is None
+        ):
+            return None
+        statement = (
+            select(PostGenerationStateVersionModel)
+            .where(PostGenerationStateVersionModel.generation_id == generation_id)
+            .order_by(PostGenerationStateVersionModel.version)
+        )
+        models = (await self._session.execute(statement)).scalars().all()
+        return tuple(_workflow_snapshot(model) for model in models)
+
     async def _find_post(
         self,
         *,
@@ -275,4 +428,27 @@ class SQLAlchemyPostRepository:
         )
         if for_update:
             statement = statement.with_for_update()
+        return (await self._session.execute(statement)).scalar_one_or_none()
+
+    async def _find_workflow_state(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> PostGenerationStateModel | None:
+        statement = (
+            select(PostGenerationStateModel)
+            .join(
+                PostGenerationModel,
+                PostGenerationModel.id == PostGenerationStateModel.generation_id,
+            )
+            .join(PostModel, PostModel.id == PostGenerationModel.post_id)
+            .where(
+                PostGenerationStateModel.generation_id == generation_id,
+                PostGenerationModel.post_id == post_id,
+                PostModel.user_id == scope.user_id,
+                PostModel.project_id == scope.project_id,
+            )
+        )
         return (await self._session.execute(statement)).scalar_one_or_none()
