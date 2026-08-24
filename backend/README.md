@@ -128,3 +128,18 @@ retry policy. Generated internal analysis is written in concise English for
 consistent model quality, while authoritative names, offers, and fact values
 remain exactly as supplied. The requested content language is consumed later by
 the Copywriter stage.
+
+## Audience Intelligence Agent
+
+The Ticket 17 specialist reads the immutable semantic contract plus validated
+brand and product analysis, then writes exactly the `audience` workflow section.
+It produces segments, one selected target, needs, desires, pain points,
+objections, motivation, purchase intent, trust triggers, usage context, and an
+explicit current-state to desired-state customer tension.
+
+Every derived insight carries an allowlisted input `basis` and a confidence
+level. Protected audience, market, location, platform, and contract fingerprint
+are rebuilt from the semantic contract. Generated insights remain clearly marked
+as hypotheses until Ticket 18 External Research validates them. The strict
+schema excludes positioning, USP selection, marketing strategy, copy, creative
+concepts, and design decisions.
