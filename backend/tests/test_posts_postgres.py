@@ -10,12 +10,16 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.infrastructure.database.repositories.execution_traces import (
+    SQLAlchemyExecutionTraceRecorder,
+)
 from app.infrastructure.database.repositories.generation_jobs import (
     SQLAlchemyGenerationJobRepository,
 )
 from app.infrastructure.database.repositories.posts import SQLAlchemyPostRepository
 from app.models.posts import (
     GenerationArtifactModel,
+    PostExecutionTraceModel,
     PostGenerationJobModel,
     PostGenerationModel,
     PostGenerationStateModel,
@@ -27,6 +31,11 @@ from app.modules.posts.domain.enums import GenerationArtifactKind, PostWorkflowS
 from app.modules.posts.domain.exceptions import (
     SemanticContractHardFailError,
     WorkflowStateConflictError,
+)
+from app.modules.posts.domain.observability import (
+    ExecutionRunKind,
+    ExecutionRunStatus,
+    ExecutionTraceCreate,
 )
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
 from app.modules.posts.services import PostsService
@@ -361,6 +370,57 @@ async def test_postgres_state_survives_sessions_and_optimistic_concurrency(
             assert history[0].data["brief"] == {}
     finally:
         await _delete_post(postgres_session_factory, post.id)
+
+
+@pytest.mark.asyncio
+async def test_postgres_execution_trace_persists_and_cascades_with_generation(
+    postgres_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    scope = PostScope(user_id=uuid4(), project_id=uuid4())
+    async with postgres_session_factory.begin() as session:
+        service = PostsService(SQLAlchemyPostRepository(session))
+        post = await service.create_post(
+            scope=scope,
+            conversation_id=None,
+            campaign_id=None,
+            title="Durable trace",
+        )
+        generation = await service.request_generation(post_id=post.id, scope=scope)
+
+    await SQLAlchemyExecutionTraceRecorder(postgres_session_factory).record(
+        ExecutionTraceCreate(
+            generation_id=generation.id,
+            correlation_id=uuid4(),
+            kind=ExecutionRunKind.PROVIDER,
+            name="llm.complete",
+            status=ExecutionRunStatus.SUCCEEDED,
+            provider="ollama",
+            model="qwen2.5:3b",
+            duration_ms=125,
+            input_tokens=10,
+            output_tokens=5,
+        )
+    )
+
+    async with postgres_session_factory() as session:
+        service = PostsService(SQLAlchemyPostRepository(session))
+        traces = await service.list_execution_traces(
+            generation_id=generation.id,
+            post_id=post.id,
+            scope=scope,
+        )
+        assert len(traces) == 1
+        assert traces[0].provider == "ollama"
+        assert traces[0].input_tokens == 10
+
+    await _delete_post(postgres_session_factory, post.id)
+    async with postgres_session_factory() as session:
+        count = await session.scalar(
+            select(func.count(PostExecutionTraceModel.id)).where(
+                PostExecutionTraceModel.generation_id == generation.id
+            )
+        )
+    assert count == 0
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 """Posts transport and application schemas."""
 
 from app.modules.posts.schemas.models import (
+    ExecutionTraceRead,
     GenerationArtifactRead,
     GenerationJobRead,
     PostCreate,
@@ -19,6 +20,7 @@ from app.modules.posts.schemas.models import (
 
 __all__ = [
     "GenerationArtifactRead",
+    "ExecutionTraceRead",
     "GenerationJobRead",
     "PostCreate",
     "PostGenerationRead",

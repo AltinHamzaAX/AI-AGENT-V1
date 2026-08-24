@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from time import monotonic
 from typing import Any, Protocol
 
@@ -20,6 +21,14 @@ from app.modules.posts.domain.exceptions import (
     InvocationTimeoutError,
     ToolNotFoundError,
     UnauthorizedToolInvocationError,
+)
+from app.modules.posts.domain.observability import (
+    ExecutionRunKind,
+    ExecutionRunStatus,
+    ExecutionTraceCreate,
+    ExecutionTraceRecorder,
+    safe_error_code,
+    trace_reference,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,9 +65,10 @@ class _RegisteredTool:
 
 
 class ToolRegistry:
-    def __init__(self) -> None:
+    def __init__(self, *, trace_recorder: ExecutionTraceRecorder | None = None) -> None:
         self._tools: dict[str, _RegisteredTool] = {}
         self._agent_tokens: dict[str, tuple[AgentDefinition, object]] = {}
+        self._trace_recorder = trace_recorder
 
     def register(self, definition: ToolDefinition, handler: ToolHandler) -> None:
         if definition.tool_name in self._tools:
@@ -98,14 +108,50 @@ class ToolRegistry:
         try:
             registered = self._tools[tool_name]
         except KeyError as exc:
+            await self._record_trace(
+                tool_name,
+                invocation,
+                status=ExecutionRunStatus.FAILED,
+                started_at=datetime.now(UTC),
+                duration_ms=0,
+                input_reference=trace_reference(payload),
+                error_code="ToolNotFoundError",
+                metadata={"agent_name": agent.name},
+            )
             raise ToolNotFoundError(f"Tool '{tool_name}' is not registered") from exc
-        self._authorize(
-            agent=agent,
-            token=token,
-            tool=registered.definition,
-            invocation=invocation,
-        )
-        validated_input = registered.definition.input_schema.model_validate(payload)
+        try:
+            self._authorize(
+                agent=agent,
+                token=token,
+                tool=registered.definition,
+                invocation=invocation,
+            )
+        except UnauthorizedToolInvocationError as exc:
+            await self._record_trace(
+                registered.definition.tool_name,
+                invocation,
+                status=ExecutionRunStatus.DENIED,
+                started_at=datetime.now(UTC),
+                duration_ms=0,
+                input_reference=trace_reference(payload),
+                error_code=safe_error_code(exc),
+                metadata={"agent_name": agent.name},
+            )
+            raise
+        try:
+            validated_input = registered.definition.input_schema.model_validate(payload)
+        except Exception as exc:
+            await self._record_trace(
+                registered.definition.tool_name,
+                invocation,
+                status=ExecutionRunStatus.FAILED,
+                started_at=datetime.now(UTC),
+                duration_ms=0,
+                input_reference=trace_reference(payload),
+                error_code=safe_error_code(exc),
+                metadata={"agent_name": agent.name},
+            )
+            raise
         return await self._execute(
             registered=registered,
             agent=agent,
@@ -168,6 +214,8 @@ class ToolRegistry:
         definition = registered.definition
         policy = definition.retry_policy
         started_at = monotonic()
+        started_wall = datetime.now(UTC)
+        input_reference = trace_reference(validated_input)
         for attempt in range(1, policy.max_attempts + 1):
             context = ToolExecutionContext(
                 invocation=invocation,
@@ -194,6 +242,17 @@ class ToolRegistry:
                     attempt,
                     started_at,
                 )
+                await self._record_trace(
+                    definition.tool_name,
+                    invocation,
+                    status=ExecutionRunStatus.TIMEOUT,
+                    started_at=started_wall,
+                    duration_ms=_duration_ms(started_at),
+                    retry_count=attempt - 1,
+                    input_reference=input_reference,
+                    error_code=safe_error_code(exc),
+                    metadata={"agent_name": agent.name},
+                )
                 raise InvocationTimeoutError(
                     component="tool",
                     name=definition.tool_name,
@@ -212,6 +271,17 @@ class ToolRegistry:
                     attempt,
                     started_at,
                 )
+                await self._record_trace(
+                    definition.tool_name,
+                    invocation,
+                    status=ExecutionRunStatus.FAILED,
+                    started_at=started_wall,
+                    duration_ms=_duration_ms(started_at),
+                    retry_count=attempt - 1,
+                    input_reference=input_reference,
+                    error_code=safe_error_code(exc),
+                    metadata={"agent_name": agent.name},
+                )
                 raise InvocationFailedError(
                     component="tool",
                     name=definition.tool_name,
@@ -225,8 +295,40 @@ class ToolRegistry:
                 attempt,
                 started_at,
             )
+            await self._record_trace(
+                definition.tool_name,
+                invocation,
+                status=ExecutionRunStatus.SUCCEEDED,
+                started_at=started_wall,
+                duration_ms=_duration_ms(started_at),
+                retry_count=attempt - 1,
+                input_reference=input_reference,
+                output_reference=trace_reference(output),
+                metadata={"agent_name": agent.name},
+            )
             return output
         raise AssertionError("unreachable retry loop")
+
+    async def _record_trace(
+        self,
+        name: str,
+        invocation: InvocationContext,
+        **fields: Any,
+    ) -> None:
+        if self._trace_recorder is None or invocation.generation_id is None:
+            return
+        try:
+            await self._trace_recorder.record(
+                ExecutionTraceCreate(
+                    generation_id=invocation.generation_id,
+                    correlation_id=invocation.correlation_id,
+                    kind=ExecutionRunKind.TOOL,
+                    name=name,
+                    **fields,
+                )
+            )
+        except Exception:  # noqa: BLE001 - telemetry must not break tool execution
+            logger.exception("posts.trace.record_failed", extra={"trace_kind": "tool"})
 
 
 class _BoundToolGateway:
@@ -305,6 +407,10 @@ def _log_completion(
             "duration_ms": round((monotonic() - started_at) * 1000, 3),
         },
     )
+
+
+def _duration_ms(started_at: float) -> int:
+    return max(0, round((monotonic() - started_at) * 1000))
 
 
 __all__ = ["ToolExecutionContext", "ToolGateway", "ToolHandler", "ToolRegistry"]

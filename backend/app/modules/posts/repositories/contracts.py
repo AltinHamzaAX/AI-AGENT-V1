@@ -14,6 +14,7 @@ from app.modules.posts.domain.enums import (
     PostWorkflowSection,
 )
 from app.modules.posts.domain.jobs import GenerationJob
+from app.modules.posts.domain.observability import ExecutionTrace
 from app.modules.posts.domain.state import (
     PostGenerationState,
     PostGenerationStateSnapshot,
@@ -105,6 +106,14 @@ class PostRepository(Protocol):
         post_id: UUID,
         scope: PostScope,
     ) -> Sequence[GenerationArtifact] | None: ...
+
+    async def list_execution_traces(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> Sequence[ExecutionTrace] | None: ...
 
     async def get_workflow_state(
         self,

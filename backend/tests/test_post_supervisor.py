@@ -16,6 +16,10 @@ from app.infrastructure.database.repositories.supervisor import (
 from app.models.posts import PostGenerationJobModel, PostGenerationModel
 from app.modules.posts.domain.entities import PostScope
 from app.modules.posts.domain.enums import GenerationStatus, PostWorkflowSection
+from app.modules.posts.domain.observability import (
+    ExecutionRunKind,
+    InMemoryExecutionTraceRecorder,
+)
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
 from app.modules.posts.domain.state import (
     PostGenerationState,
@@ -285,6 +289,7 @@ class _StageHandler:
 @pytest.mark.asyncio
 async def test_executor_runs_registered_graph_and_persists_resumable_progress() -> None:
     store = _InMemoryStore(_state())
+    recorder = InMemoryExecutionTraceRecorder()
     understanding = _StageHandler({PostWorkflowSection.BRIEF: {"goal": "bookings"}})
     contract = _StageHandler(
         {PostWorkflowSection.SEMANTIC_CONTRACT: _semantic_contract()}
@@ -296,6 +301,7 @@ async def test_executor_runs_registered_graph_and_persists_resumable_progress() 
             SupervisorStage.CLIENT_UNDERSTANDING: understanding,
             SupervisorStage.SEMANTIC_CONTRACT: contract,
         },
+        trace_recorder=recorder,
     )
 
     await executor.execute(generation_id=store.state.generation_id, job_id=uuid4())
@@ -311,6 +317,14 @@ async def test_executor_runs_registered_graph_and_persists_resumable_progress() 
     }
     assert understanding.actions == [SupervisorAction.CONTINUE]
     assert contract.actions == [SupervisorAction.CONTINUE]
+    assert [trace.kind for trace in recorder.traces] == [
+        ExecutionRunKind.GENERATION_STEP,
+        ExecutionRunKind.GENERATION_STEP,
+    ]
+    assert [trace.name for trace in recorder.traces] == [
+        "client_understanding",
+        "semantic_contract",
+    ]
 
 
 @pytest_asyncio.fixture

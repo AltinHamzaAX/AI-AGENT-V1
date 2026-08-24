@@ -77,3 +77,16 @@ from configuration, keeping Ollama, Hugging Face, Tavily, and S3-specific detail
 outside agents and workflow state. Every capability has a deterministic mock for
 unit and orchestration tests. Provider failures expose only a safe provider name
 and status category, never tokens or raw response bodies.
+
+## Execution tracing
+
+Agent runs, tool runs, provider calls, and Supervisor generation steps can emit
+durable records to `post_execution_traces`. Each record contains correlation and
+generation identifiers, status, SHA-256 input/output references, duration,
+retry count, safe error code, and provider/model/token/cost metadata when the
+adapter supplies it. Raw prompts, payloads, images, provider responses, and
+credentials are never stored in the trace.
+
+The scoped endpoint
+`GET /api/posts/{post_id}/generations/{generation_id}/traces` returns the ordered
+execution timeline for diagnostics. Run `alembic upgrade head` before using it.

@@ -1,10 +1,20 @@
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from time import monotonic
 from typing import Any, Protocol
 from uuid import UUID
 
 from app.modules.posts.domain.enums import GenerationStatus, PostWorkflowSection
 from app.modules.posts.domain.jobs import NonRetryableJobError
+from app.modules.posts.domain.observability import (
+    ExecutionRunKind,
+    ExecutionRunStatus,
+    ExecutionTraceCreate,
+    ExecutionTraceRecorder,
+    safe_error_code,
+    trace_reference,
+)
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
 from app.modules.posts.domain.state import PostGenerationState, validate_section_value
 from app.modules.posts.domain.supervisor import (
@@ -76,6 +86,7 @@ class PostSupervisorExecutor:
         store: SupervisorCheckpointStore,
         handlers: dict[SupervisorStage, SupervisorStageHandler],
         supervisor: PostSupervisor | None = None,
+        trace_recorder: ExecutionTraceRecorder | None = None,
         max_decisions: int = 100,
     ) -> None:
         if not 1 <= max_decisions <= 1000:
@@ -83,6 +94,7 @@ class PostSupervisorExecutor:
         self._store = store
         self._handlers = dict(handlers)
         self._supervisor = supervisor or PostSupervisor()
+        self._trace_recorder = trace_recorder
         self._max_decisions = max_decisions
 
     async def execute(self, *, generation_id: UUID, job_id: UUID) -> None:
@@ -135,15 +147,18 @@ class PostSupervisorExecutor:
             stage = decision.next_stage
             if stage is None:
                 raise NonRetryableJobError("supervisor omitted next_stage")
-            result = await self._handlers[stage].execute(
-                SupervisorStageContext(
-                    generation_id=generation_id,
-                    post_id=checkpoint.post_id,
-                    job_id=job_id,
-                    workflow_state=persisted.data,
-                    state_version=persisted.version,
-                    action=decision.action,
-                )
+            stage_context = SupervisorStageContext(
+                generation_id=generation_id,
+                post_id=checkpoint.post_id,
+                job_id=job_id,
+                workflow_state=persisted.data,
+                state_version=persisted.version,
+                action=decision.action,
+            )
+            result = await self._execute_stage(
+                stage=stage,
+                context=stage_context,
+                retry_count=_stage_retry_count(persisted.data, stage),
             )
             persisted = await self._persist_stage_outputs(
                 generation_id=generation_id,
@@ -172,6 +187,79 @@ class PostSupervisorExecutor:
             if saved is None:
                 continue
         raise RuntimeError("supervisor decision limit exceeded")
+
+    async def _execute_stage(
+        self,
+        *,
+        stage: SupervisorStage,
+        context: SupervisorStageContext,
+        retry_count: int,
+    ) -> SupervisorStageResult:
+        started_at = monotonic()
+        started_wall = datetime.now(UTC)
+        input_reference = trace_reference(
+            {
+                "generation_id": str(context.generation_id),
+                "state_version": context.state_version,
+                "stage": stage.value,
+                "action": context.action.value,
+            }
+        )
+        try:
+            result = await self._handlers[stage].execute(context)
+        except Exception as exc:
+            await self._record_stage_trace(
+                context=context,
+                stage=stage,
+                status=ExecutionRunStatus.FAILED,
+                started_at=started_wall,
+                duration_ms=_duration_ms(started_at),
+                retry_count=retry_count,
+                input_reference=input_reference,
+                error_code=safe_error_code(exc),
+            )
+            raise
+        await self._record_stage_trace(
+            context=context,
+            stage=stage,
+            status=ExecutionRunStatus.SUCCEEDED,
+            started_at=started_wall,
+            duration_ms=_duration_ms(started_at),
+            retry_count=retry_count,
+            input_reference=input_reference,
+            output_reference=trace_reference(result.outputs),
+        )
+        return result
+
+    async def _record_stage_trace(
+        self,
+        *,
+        context: SupervisorStageContext,
+        stage: SupervisorStage,
+        **fields: Any,
+    ) -> None:
+        if self._trace_recorder is None:
+            return
+        try:
+            await self._trace_recorder.record(
+                ExecutionTraceCreate(
+                    generation_id=context.generation_id,
+                    correlation_id=context.job_id,
+                    kind=ExecutionRunKind.GENERATION_STEP,
+                    name=stage.value,
+                    metadata={
+                        "post_id": str(context.post_id),
+                        "state_version": context.state_version,
+                        "action": context.action.value,
+                    },
+                    **fields,
+                )
+            )
+        except Exception:  # noqa: BLE001 - telemetry must not break generation
+            logger.exception(
+                "posts.trace.record_failed",
+                extra={"trace_kind": "generation_step", "stage": stage.value},
+            )
 
     async def _persist_stage_outputs(
         self,
@@ -213,6 +301,17 @@ def _validate_stage_output(section: PostWorkflowSection, value: Any) -> Any:
         except (KeyError, TypeError, ValueError) as exc:
             raise NonRetryableJobError("stage returned invalid semantic contract") from exc
     return validated
+
+
+def _stage_retry_count(state: dict[str, Any], stage: SupervisorStage) -> int:
+    supervisor = state.get(PostWorkflowSection.SUPERVISOR.value, {})
+    attempts = supervisor.get("stage_attempts", {}) if isinstance(supervisor, dict) else {}
+    count = attempts.get(stage.value, 1) if isinstance(attempts, dict) else 1
+    return max(0, count - 1) if isinstance(count, int) else 0
+
+
+def _duration_ms(started_at: float) -> int:
+    return max(0, round((monotonic() - started_at) * 1000))
 
 
 __all__ = [

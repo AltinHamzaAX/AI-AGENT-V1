@@ -23,6 +23,7 @@ from app.modules.posts.domain.exceptions import (
     WorkflowStateConflictError,
 )
 from app.modules.posts.domain.jobs import GenerationJob
+from app.modules.posts.domain.observability import ExecutionTrace
 from app.modules.posts.domain.semantic_contract import (
     PostSemanticContract,
     SemanticAssertions,
@@ -209,6 +210,22 @@ class PostsService:
         if artifacts is None:
             raise PostGenerationNotFoundError
         return artifacts
+
+    async def list_execution_traces(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> Sequence[ExecutionTrace]:
+        traces = await self._repository.list_execution_traces(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+        if traces is None:
+            raise PostGenerationNotFoundError
+        return traces
 
     async def get_workflow_state(
         self,

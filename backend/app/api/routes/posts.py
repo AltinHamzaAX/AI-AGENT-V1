@@ -14,6 +14,7 @@ from app.modules.posts.domain.exceptions import (
     WorkflowStateConflictError,
 )
 from app.modules.posts.schemas import (
+    ExecutionTraceRead,
     GenerationArtifactRead,
     GenerationJobRead,
     PostCreate,
@@ -150,6 +151,27 @@ async def list_generation_artifacts(
     except PostGenerationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Post generation not found") from exc
     return [GenerationArtifactRead.from_domain(artifact) for artifact in artifacts]
+
+
+@router.get(
+    "/{post_id}/generations/{generation_id}/traces",
+    response_model=list[ExecutionTraceRead],
+)
+async def list_generation_traces(
+    post_id: UUID,
+    generation_id: UUID,
+    scope: PostScopeDependency,
+    service: PostsServiceDependency,
+) -> list[ExecutionTraceRead]:
+    try:
+        traces = await service.list_execution_traces(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+    except PostGenerationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Post generation not found") from exc
+    return [ExecutionTraceRead.from_domain(trace) for trace in traces]
 
 
 @router.get(

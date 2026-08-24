@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -9,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
     Uuid,
@@ -225,3 +227,64 @@ class PostGenerationStateVersionModel(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class PostExecutionTraceModel(Base):
+    __tablename__ = "post_execution_traces"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('agent', 'tool', 'provider', 'generation_step')",
+            name="valid_kind",
+        ),
+        CheckConstraint(
+            "status IN ('succeeded', 'failed', 'timeout', 'denied')",
+            name="valid_status",
+        ),
+        CheckConstraint("duration_ms >= 0", name="non_negative_duration"),
+        CheckConstraint("retry_count >= 0", name="non_negative_retries"),
+        CheckConstraint(
+            "input_tokens IS NULL OR input_tokens >= 0",
+            name="non_negative_input_tokens",
+        ),
+        CheckConstraint(
+            "output_tokens IS NULL OR output_tokens >= 0",
+            name="non_negative_output_tokens",
+        ),
+        CheckConstraint("cost_usd IS NULL OR cost_usd >= 0", name="non_negative_cost"),
+        Index(
+            "ix_post_execution_traces_generation_timeline",
+            "generation_id",
+            "started_at",
+            "id",
+        ),
+        Index("ix_post_execution_traces_correlation", "correlation_id", "started_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    generation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("post_generations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    correlation_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    input_reference: Mapped[str | None] = mapped_column(String(71))
+    output_reference: Mapped[str | None] = mapped_column(String(71))
+    provider: Mapped[str | None] = mapped_column(String(100))
+    model: Mapped[str | None] = mapped_column(String(300))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(14, 6))
+    duration_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(200))
+    trace_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=dict,
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
