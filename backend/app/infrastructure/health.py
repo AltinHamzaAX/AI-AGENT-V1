@@ -16,6 +16,15 @@ async def _database_check() -> None:
         await connection.execute(text("SELECT 1"))
 
 
+async def _pgvector_check() -> None:
+    async with engine.connect() as connection:
+        result = await connection.execute(
+            text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
+        )
+        if result.scalar_one_or_none() is None:
+            raise RuntimeError("pgvector extension is not enabled")
+
+
 async def _redis_check() -> None:
     if not await get_redis().ping():
         raise ConnectionError("Redis ping failed")
@@ -37,6 +46,7 @@ async def _result(name: str, check: Callable[[], Awaitable[None]]) -> tuple[str,
 async def check_dependencies() -> dict[str, str]:
     results = await asyncio.gather(
         _result("database", _database_check),
+        _result("pgvector", _pgvector_check),
         _result("redis", _redis_check),
         _result("storage", _storage_check),
     )
