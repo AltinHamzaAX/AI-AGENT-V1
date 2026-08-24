@@ -157,6 +157,27 @@ fail closed. The output explicitly records that these are reasoned hypotheses;
 Ticket 18 External Research may validate or enrich them, while the Marketing
 Strategist remains responsible for positioning and strategic decisions.
 
+## Asset Intelligence
+
+`AssetIntelligenceAgent` runs after the immutable semantic contract and writes
+only the `assets` state section. It classifies every attachment into the Posts
+asset vocabulary and retains the exact user quote whenever conversation intent
+changes an otherwise ambiguous classification. Declared logo, product,
+packaging, environment, background, style-reference, and inspiration roles are
+authoritative and cannot be downgraded by a provider response.
+
+The model proposes classification only. The application deterministically owns
+`required`, `preserve_identity`, `allow_crop`, `allow_replace`,
+`allow_generation`, `min_dominance`, and `max_dominance`. Logo, primary product,
+vehicle, and packaging identity cannot be replaced or synthesized. Required
+asset IDs are checked against the workflow attachments before provider use.
+
+Downstream composition and verification submit typed usage assertions to the
+asset-policy gate. Missing required assets, unauthorized replacements or
+generated substitutes, identity drift, forbidden cropping, and out-of-range
+dominance produce `ASSET_POLICY_HARD_FAIL`; replaceable background and
+inspiration references may continue according to their explicit policy.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a

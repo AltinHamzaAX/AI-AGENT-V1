@@ -1,5 +1,11 @@
 """Posts-specific agent framework and specialist packages."""
 
+from app.modules.posts.agents.asset_intelligence import (
+    AssetIntelligenceAgent,
+    AssetIntelligenceInput,
+    AssetIntelligenceResult,
+    AssetPolicy,
+)
 from app.modules.posts.agents.audience_research import (
     AudienceIntelligence,
     AudienceIntelligenceAgent,
@@ -28,6 +34,10 @@ __all__ = [
     "AudienceIntelligence",
     "AudienceIntelligenceAgent",
     "AudienceIntelligenceInput",
+    "AssetIntelligenceAgent",
+    "AssetIntelligenceInput",
+    "AssetIntelligenceResult",
+    "AssetPolicy",
     "BrandProductAnalysis",
     "BrandProductInput",
     "BrandProductStrategistAgent",
