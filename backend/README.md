@@ -143,3 +143,19 @@ are rebuilt from the semantic contract. Generated insights remain clearly marked
 as hypotheses until Ticket 18 External Research validates them. The strict
 schema excludes positioning, USP selection, marketing strategy, copy, creative
 concepts, and design decisions.
+
+## Asset Intelligence Engine
+
+The Ticket 16 specialist classifies every conversation attachment before
+production and writes exactly the `assets` workflow section. Its role vocabulary
+is `brand_logo`, `primary_product`, `vehicle`, `packaging`, `environment`,
+`background_reference`, `style_reference`, `supporting_asset`, and
+`inspiration_only`.
+
+User-declared roles remain authoritative, while an exact user-intent quote may
+promote a vehicle or ambiguous supporting attachment to the primary product.
+Policy fields are never delegated to the model: required use, identity
+preservation, crop/replacement/generation permissions, and dominance bounds are
+derived deterministically. Missing required assets fail before a provider call.
+The reusable usage gate returns `HARD_FAIL` for a missing or replaced protected
+asset, identity drift, forbidden crop or generation, or invalid dominance.

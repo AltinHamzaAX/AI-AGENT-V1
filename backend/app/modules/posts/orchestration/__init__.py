@@ -1,5 +1,8 @@
 """Posts workflow coordination boundary."""
 
+from app.modules.posts.orchestration.asset_intelligence import (
+    AssetIntelligenceStageHandler,
+)
 from app.modules.posts.orchestration.audience_intelligence import (
     AudienceIntelligenceStageHandler,
 )
@@ -19,6 +22,7 @@ from app.modules.posts.orchestration.supervisor import (
 
 __all__ = [
     "AudienceIntelligenceStageHandler",
+    "AssetIntelligenceStageHandler",
     "BrandProductStageHandler",
     "ClientUnderstandingStageHandler",
     "PostSupervisorExecutor",
