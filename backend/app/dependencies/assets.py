@@ -6,16 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.infrastructure.database.repositories.assets import SQLAlchemyAssetRepository
 from app.infrastructure.database.session import get_db_transaction
-from app.infrastructure.storage.s3 import S3Storage
+from app.integrations.provider_factory import create_storage_provider
 from app.shared.assets.contracts import AssetStorage
 from app.shared.assets.service import AssetService
 
 
 def get_asset_storage() -> AssetStorage:
-    settings = get_settings()
-    if settings.storage_provider.lower() not in {"s3", "minio"}:
-        raise RuntimeError(f"Unsupported storage provider: {settings.storage_provider}")
-    return S3Storage()
+    return create_storage_provider(get_settings())
 
 
 def get_asset_service(

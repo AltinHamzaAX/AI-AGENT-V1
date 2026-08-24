@@ -1,5 +1,3 @@
-from typing import Protocol
+from app.modules.posts.providers import LLMProvider
 
-
-class LLMProvider(Protocol):
-    async def complete(self, messages: list[dict[str, str]]) -> str: ...
+__all__ = ["LLMProvider"]

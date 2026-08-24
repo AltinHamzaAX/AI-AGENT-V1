@@ -91,6 +91,21 @@ failures are never retryable. This ticket provides the execution contract only:
 specialist behavior, provider adapters, Supervisor routing, and workflow jobs are
 implemented by later tickets.
 
+## AI provider abstraction
+
+Posts agents and tools depend only on typed provider ports owned by the Posts
+module: LLM, vision, image, embedding, research, and storage. Request and
+response contracts include provider/model identity where relevant but contain no
+SDK-specific objects. Technical adapters live under `app/integrations` or
+`app/infrastructure`; provider SDKs and HTTP response shapes never enter agents.
+
+The application composition root selects each adapter independently from
+environment configuration. Current adapters support Ollama for text, vision,
+and embeddings; Hugging Face Inference Providers for image generation; Tavily
+for research; and S3-compatible storage for MinIO/S3. A deterministic mock exists
+for every port, allowing workflow tests to run without network calls or secrets.
+Unknown or incomplete configuration fails closed with safe errors.
+
 Other modules must enter Posts through a public module-level application service,
 such as `PostGenerationService`. They must not import Posts agents, tools, or
 orchestration internals.

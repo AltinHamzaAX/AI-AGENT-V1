@@ -59,3 +59,12 @@ timeout/retry policies, and lifecycle events carry correlation, post, and
 generation identifiers without logging request payloads. Creative Director is
 always denied final approval, database mutation, and asset replacement tools,
 even if a definition is misconfigured to allow them.
+
+## AI providers
+
+Posts owns typed ports for LLM, vision, image, embedding, research, and storage
+capabilities. `app.integrations.provider_factory` selects adapters exclusively
+from configuration, keeping Ollama, Hugging Face, Tavily, and S3-specific details
+outside agents and workflow state. Every capability has a deterministic mock for
+unit and orchestration tests. Provider failures expose only a safe provider name
+and status category, never tokens or raw response bodies.

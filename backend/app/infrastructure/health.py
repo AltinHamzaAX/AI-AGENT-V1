@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from app.infrastructure.cache.redis import get_redis
 from app.infrastructure.database.session import engine
-from app.infrastructure.storage.s3 import S3Storage
+from app.integrations.provider_factory import create_storage_provider
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ async def _redis_check() -> None:
 
 
 async def _storage_check() -> None:
-    await S3Storage().is_available()
+    await create_storage_provider().is_available()
 
 
 async def _result(name: str, check: Callable[[], Awaitable[None]]) -> tuple[str, str]:

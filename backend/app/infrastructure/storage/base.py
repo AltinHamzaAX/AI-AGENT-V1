@@ -1,7 +1,7 @@
-"""Compatibility export for the object-storage application port."""
+"""Compatibility exports for object-storage application ports."""
 
-from app.shared.assets.contracts import AssetStorage
+from app.modules.posts.providers import StorageProvider
 
-ObjectStorage = AssetStorage
+ObjectStorage = StorageProvider
 
-__all__ = ["ObjectStorage"]
+__all__ = ["ObjectStorage", "StorageProvider"]

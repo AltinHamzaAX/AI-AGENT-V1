@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     database_url: str = Field(repr=False)
 
     redis_url: str = Field(repr=False)
+    provider_timeout_seconds: float = Field(default=120.0, gt=0)
     generation_job_max_attempts: int = Field(default=3, gt=0)
     generation_job_timeout_seconds: int = Field(default=900, gt=0)
     generation_job_lease_seconds: int = Field(default=960, gt=0)
@@ -59,7 +60,10 @@ class Settings(BaseSettings):
     huggingface_api_token: str = Field(default="", repr=False)
     vision_provider: str = ""
     vision_model: str = ""
+    embedding_provider: str = ""
+    embedding_model: str = ""
     research_provider: str = ""
+    tavily_api_base_url: str = "https://api.tavily.com"
     tavily_api_key: str = Field(default="", repr=False)
 
     @property
