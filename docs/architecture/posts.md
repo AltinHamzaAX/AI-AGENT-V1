@@ -142,6 +142,21 @@ quality, but preserves authoritative proper nouns, offers, and fact values
 verbatim. This does not change the semantic contract's requested language; final
 localized content remains a downstream Copywriter responsibility.
 
+## Audience Intelligence
+
+`AudienceIntelligenceAgent` runs after Brand & Product analysis and writes only
+the `audience` state section. It goes beyond demographics by producing audience
+segments, a selected target, needs, desires, pain points, objections,
+motivations, purchase intent, trust triggers, situational context, and a
+current-state/desired-state customer tension.
+
+Each derived value cites an allowlisted basis from the semantic contract or the
+validated Brand/Product outputs and carries a confidence level. Unknown evidence
+references, protected-state drift, forbidden claims, and strategy/copy fields
+fail closed. The output explicitly records that these are reasoned hypotheses;
+Ticket 18 External Research may validate or enrich them, while the Marketing
+Strategist remains responsible for positioning and strategic decisions.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a
