@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Self
 from uuid import UUID
 
@@ -12,6 +13,11 @@ from app.modules.posts.domain.enums import (
     PostWorkflowSection,
 )
 from app.modules.posts.domain.jobs import GenerationJob
+from app.modules.posts.domain.observability import (
+    ExecutionRunKind,
+    ExecutionRunStatus,
+    ExecutionTrace,
+)
 from app.modules.posts.domain.semantic_contract import (
     PROTECTED_SCALAR_FIELDS,
     PostSemanticContract,
@@ -142,6 +148,52 @@ class GenerationArtifactRead(BaseModel):
             height=artifact.height,
             metadata=artifact.metadata,
             created_at=artifact.created_at,
+        )
+
+
+class ExecutionTraceRead(BaseModel):
+    id: UUID
+    generation_id: UUID
+    correlation_id: UUID
+    kind: ExecutionRunKind
+    name: str
+    status: ExecutionRunStatus
+    input_reference: str | None
+    output_reference: str | None
+    provider: str | None
+    model: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    cost_usd: Decimal | None
+    duration_ms: int
+    retry_count: int
+    error_code: str | None
+    metadata: dict[str, JsonValue]
+    started_at: datetime
+    completed_at: datetime
+
+    @classmethod
+    def from_domain(cls, trace: ExecutionTrace) -> Self:
+        return cls(
+            id=trace.id,
+            generation_id=trace.generation_id,
+            correlation_id=trace.correlation_id,
+            kind=trace.kind,
+            name=trace.name,
+            status=trace.status,
+            input_reference=trace.input_reference,
+            output_reference=trace.output_reference,
+            provider=trace.provider,
+            model=trace.model,
+            input_tokens=trace.input_tokens,
+            output_tokens=trace.output_tokens,
+            cost_usd=trace.cost_usd,
+            duration_ms=trace.duration_ms,
+            retry_count=trace.retry_count,
+            error_code=trace.error_code,
+            metadata=trace.metadata,
+            started_at=trace.started_at,
+            completed_at=trace.completed_at,
         )
 
 

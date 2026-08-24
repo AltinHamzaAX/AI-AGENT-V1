@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.infrastructure.database.base import Base
+from app.infrastructure.database.repositories.execution_traces import (
+    SQLAlchemyExecutionTraceRecorder,
+)
 from app.infrastructure.database.repositories.posts import SQLAlchemyPostRepository
 from app.infrastructure.database.session import get_db_transaction
 from app.main import app
@@ -21,6 +24,11 @@ from app.modules.posts.domain.enums import (
     PostWorkflowSection,
 )
 from app.modules.posts.domain.exceptions import SemanticContractHardFailError
+from app.modules.posts.domain.observability import (
+    ExecutionRunKind,
+    ExecutionRunStatus,
+    ExecutionTraceCreate,
+)
 from app.modules.posts.services import PostsService
 
 
@@ -149,6 +157,51 @@ async def test_standalone_post_supports_multiple_ordered_generation_attempts(
     )
     assert artifacts.status_code == 200
     assert artifacts.json() == []
+
+
+@pytest.mark.asyncio
+async def test_generation_trace_timeline_is_persisted_scoped_and_readable(
+    post_client: AsyncClient,
+    post_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    headers = _headers()
+    post = await _post(post_client, headers, {"title": "Trace timeline"})
+    generation_response = await post_client.post(
+        f"/api/posts/{post['id']}/generations",
+        headers=headers,
+    )
+    generation = generation_response.json()
+    correlation_id = uuid4()
+    await SQLAlchemyExecutionTraceRecorder(post_session_factory).record(
+        ExecutionTraceCreate(
+            generation_id=UUID(generation["id"]),
+            correlation_id=correlation_id,
+            kind=ExecutionRunKind.GENERATION_STEP,
+            name="client_understanding",
+            status=ExecutionRunStatus.SUCCEEDED,
+            input_reference="sha256:" + "a" * 64,
+            output_reference="sha256:" + "b" * 64,
+            duration_ms=2200,
+        )
+    )
+
+    response = await post_client.get(
+        f"/api/posts/{post['id']}/generations/{generation['id']}/traces",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    trace = response.json()[0]
+    assert trace["kind"] == "generation_step"
+    assert trace["name"] == "client_understanding"
+    assert trace["duration_ms"] == 2200
+    assert trace["correlation_id"] == str(correlation_id)
+
+    forbidden = await post_client.get(
+        f"/api/posts/{post['id']}/generations/{generation['id']}/traces",
+        headers=_headers(),
+    )
+    assert forbidden.status_code == 404
 
 
 @pytest.mark.asyncio

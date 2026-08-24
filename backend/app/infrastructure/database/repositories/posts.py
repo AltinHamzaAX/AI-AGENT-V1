@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.conversations import ConversationModel
 from app.models.posts import (
     GenerationArtifactModel,
+    PostExecutionTraceModel,
     PostGenerationJobModel,
     PostGenerationModel,
     PostGenerationStateModel,
@@ -29,6 +30,11 @@ from app.modules.posts.domain.enums import (
     PostWorkflowSection,
 )
 from app.modules.posts.domain.jobs import GenerationJob
+from app.modules.posts.domain.observability import (
+    ExecutionRunKind,
+    ExecutionRunStatus,
+    ExecutionTrace,
+)
 from app.modules.posts.domain.state import (
     WORKFLOW_STATE_SCHEMA_VERSION,
     PostGenerationState,
@@ -126,6 +132,30 @@ def _workflow_snapshot(
         ),
         data=validate_workflow_state(model.state),
         created_at=model.created_at,
+    )
+
+
+def _execution_trace(model: PostExecutionTraceModel) -> ExecutionTrace:
+    return ExecutionTrace(
+        id=model.id,
+        generation_id=model.generation_id,
+        correlation_id=model.correlation_id,
+        kind=ExecutionRunKind(model.kind),
+        name=model.name,
+        status=ExecutionRunStatus(model.status),
+        input_reference=model.input_reference,
+        output_reference=model.output_reference,
+        provider=model.provider,
+        model=model.model,
+        input_tokens=model.input_tokens,
+        output_tokens=model.output_tokens,
+        cost_usd=model.cost_usd,
+        duration_ms=model.duration_ms,
+        retry_count=model.retry_count,
+        error_code=model.error_code,
+        metadata=dict(model.trace_metadata),
+        started_at=model.started_at,
+        completed_at=model.completed_at,
     )
 
 
@@ -380,6 +410,30 @@ class SQLAlchemyPostRepository:
         )
         models = (await self._session.execute(statement)).scalars().all()
         return tuple(_artifact(model) for model in models)
+
+    async def list_execution_traces(
+        self,
+        *,
+        generation_id: UUID,
+        post_id: UUID,
+        scope: PostScope,
+    ) -> Sequence[ExecutionTrace] | None:
+        if (
+            await self._find_generation(
+                generation_id=generation_id,
+                post_id=post_id,
+                scope=scope,
+            )
+            is None
+        ):
+            return None
+        statement = (
+            select(PostExecutionTraceModel)
+            .where(PostExecutionTraceModel.generation_id == generation_id)
+            .order_by(PostExecutionTraceModel.started_at, PostExecutionTraceModel.id)
+        )
+        models = (await self._session.execute(statement)).scalars().all()
+        return tuple(_execution_trace(model) for model in models)
 
     async def get_workflow_state(
         self,
