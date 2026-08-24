@@ -1,1 +1,5 @@
-"""SQLAlchemy model registry; no business models exist yet."""
+"""SQLAlchemy model registry used by Alembic metadata discovery."""
+
+from app.models.conversations import ConversationModel, MessageModel
+
+__all__ = ["ConversationModel", "MessageModel"]

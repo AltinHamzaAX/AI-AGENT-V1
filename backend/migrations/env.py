@@ -1,4 +1,5 @@
 import asyncio
+from importlib import import_module
 from logging.config import fileConfig
 
 from alembic import context
@@ -7,6 +8,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import get_settings
 from app.infrastructure.database.base import Base
+
+import_module("app.models")
 
 config = context.config
 if config.config_file_name is not None:
