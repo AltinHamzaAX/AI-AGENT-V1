@@ -24,3 +24,10 @@ Asset validation, application behavior, and storage/repository ports live under
 `app/infrastructure`. Uploads are scoped to a verified conversation message,
 stored privately, validated by decoded image content, and deduplicated by SHA-256
 without exposing MinIO-specific behavior to Posts code.
+
+## Posts persistence
+
+Posts business entities, statuses, schemas, repository ports, and application
+services live under `app/modules/posts`. SQLAlchemy models and adapters remain in
+infrastructure. `PostGeneration` owns the attempt number and lifecycle status;
+`Post` is the stable container shared by standalone and future Campaign callers.

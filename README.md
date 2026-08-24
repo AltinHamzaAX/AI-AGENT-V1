@@ -109,3 +109,11 @@ and WebP content is inspected from its bytes before it is written to the private
 S3-compatible bucket. Metadata is available through `GET /api/assets/{id}` or
 `GET /api/assets?message_id={id}`. Repeated content is checksum-deduplicated
 within a project while each attachment remains linked to its message.
+
+## Posts domain
+
+The Posts API creates standalone, conversation-backed, or future campaign-backed
+posts. Each post owns ordered generation attempts and each attempt starts in
+`pending`; later worker tickets will drive queueing and workflow transitions.
+Generation artifacts store scoped metadata and private storage references without
+exposing internal object keys through HTTP responses.
