@@ -14,5 +14,10 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+async def get_db_transaction() -> AsyncIterator[AsyncSession]:
+    async with AsyncSessionFactory.begin() as session:
+        yield session
+
+
 async def close_database() -> None:
     await engine.dispose()

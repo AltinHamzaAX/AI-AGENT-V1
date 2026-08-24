@@ -20,7 +20,12 @@ each `change_me` value before starting:
 ```bash
 cp .env.example .env
 docker compose up --build
+docker compose exec -T api alembic upgrade head
 ```
+
+Run Alembic after the services become healthy and whenever the checkout gains a
+new migration. Schema migrations are intentionally explicit and are not run by
+the API or worker at startup.
 
 Run in detached mode with `docker compose up --build -d`. Inspect status and logs:
 
@@ -86,3 +91,11 @@ belong in `app/shared` only when both modules genuinely use them.
 See [architecture overview](docs/architecture/overview.md),
 [Posts boundaries](docs/architecture/posts.md), and
 [Campaigns boundaries](docs/architecture/campaigns.md).
+
+## Conversation scope
+
+Conversation endpoints require `X-User-ID` and `X-Project-ID` UUID headers. The
+API uses both values in every conversation and message query so a conversation
+identifier alone cannot cross a user or project boundary. These headers are the
+current trusted identity-boundary contract and must be populated from verified
+authentication context in a production deployment, not arbitrary client input.
