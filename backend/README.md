@@ -90,3 +90,18 @@ credentials are never stored in the trace.
 The scoped endpoint
 `GET /api/posts/{post_id}/generations/{generation_id}/traces` returns the ordered
 execution timeline for diagnostics. Run `alembic upgrade head` before using it.
+
+## Client Understanding Agent
+
+The first Posts specialist consumes structured conversation history, the latest
+message, attachment metadata, and verified project context. It emits only the
+factual `brief` section: business, brand, product/service, goal, audience,
+market/location, platform/language, offer, CTA intent, style preferences,
+constraints, exact asset references, and explicitly missing fields.
+
+Verified project values override model extraction, and attachment identity is
+rebuilt deterministically from the input rather than trusted to the model. Logo,
+product, vehicle, and packaging assets are marked for identity preservation.
+The output schema rejects research, positioning, strategy, concept, copy, or
+design fields. The Supervisor requires `conversation_context` before routing to
+this stage.

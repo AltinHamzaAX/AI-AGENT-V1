@@ -98,6 +98,24 @@ truth. Product/offer/fact drift, a forbidden claim, a missing required asset, or
 a mismatched fingerprint is a hard failure. The Supervisor routes on this
 structured decision but does not own or rewrite the contract.
 
+## Client Understanding
+
+`ClientUnderstandingAgent` is the first specialist stage. It reads typed
+conversation turns, the latest client message, attachment metadata, and existing
+project facts from `conversation_context`; it writes only `brief`. Its contract
+captures business, brand, product/service, objective, audience, market,
+location, platform, language, offer, CTA intent, style preferences, constraints,
+assets, and missing fields.
+
+The provider is asked for strict JSON through the LLM interface. Pydantic rejects
+unknown fields, so this stage cannot silently add positioning, marketing
+strategy, creative concepts, copy, or design direction. Verified project facts
+take precedence over model output. Asset IDs, roles, filenames, and identity
+preservation flags are reconstructed from trusted input, preventing attachment
+hallucination or substitution. Invalid structured output follows the bounded
+AgentRuntime retry policy and is observable through AgentRun and ProviderCall
+traces.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a

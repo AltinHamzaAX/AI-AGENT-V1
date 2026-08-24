@@ -1,5 +1,8 @@
 """Posts workflow coordination boundary."""
 
+from app.modules.posts.orchestration.client_understanding import (
+    ClientUnderstandingStageHandler,
+)
 from app.modules.posts.orchestration.supervisor import (
     PostSupervisorExecutor,
     SupervisorBlockedError,
@@ -11,6 +14,7 @@ from app.modules.posts.orchestration.supervisor import (
 )
 
 __all__ = [
+    "ClientUnderstandingStageHandler",
     "PostSupervisorExecutor",
     "SupervisorBlockedError",
     "SupervisorCheckpoint",
