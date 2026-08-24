@@ -124,3 +124,10 @@ assets, audience/research outputs, strategies, creative and design decisions,
 generation references, quality results, and revision history. A stage updates one
 section with an expected version; stale writes return `409`, while every accepted
 write creates an immutable snapshot that a restarted worker can recover.
+
+Before downstream work begins, a generation can establish its semantic contract
+through the dedicated Posts API. The contract protects the named company, brand,
+product, primary entity, objective, audience, market/location, offer, CTA,
+platform, language, required facts/assets, forbidden claims, and constraints.
+It is fingerprinted and write-once; deterministic validation returns `HARD_FAIL`
+instead of allowing a later stage to silently change product or offer truth.

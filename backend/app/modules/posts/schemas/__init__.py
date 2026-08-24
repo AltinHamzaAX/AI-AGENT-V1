@@ -7,6 +7,11 @@ from app.modules.posts.schemas.models import (
     PostGenerationStateRead,
     PostGenerationStateVersionRead,
     PostRead,
+    SemanticAssertionsRequest,
+    SemanticContractCreate,
+    SemanticContractRead,
+    SemanticContractStateRead,
+    SemanticValidationRead,
     WorkflowSectionWrite,
     WorkflowStateData,
 )
@@ -18,6 +23,11 @@ __all__ = [
     "PostGenerationStateRead",
     "PostGenerationStateVersionRead",
     "PostRead",
+    "SemanticAssertionsRequest",
+    "SemanticContractCreate",
+    "SemanticContractRead",
+    "SemanticContractStateRead",
+    "SemanticValidationRead",
     "WorkflowSectionWrite",
     "WorkflowStateData",
 ]
