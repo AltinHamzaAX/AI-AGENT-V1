@@ -33,5 +33,7 @@ interfaces keep vendor-specific clients out of business modules.
 - `minio-init`: idempotent local bucket initialization.
 
 Schema changes and database extensions are versioned with Alembic. The current
-business schema stores scoped conversations and messages; AI workflows, agents,
-and provider adapters remain future work.
+business schema stores scoped conversations, messages, and message-linked asset
+metadata. Binary assets live behind an application-owned storage port and use
+the configured private S3-compatible bucket; MinIO is only the local adapter.
+AI workflows and agents remain future work.

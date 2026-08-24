@@ -3,8 +3,9 @@
 Promotiva is the foundation for an AI marketing platform with a conversational
 interface and two future bounded business modules: Posts and Campaigns. This
 repository currently provides application bootstraps, infrastructure boundaries,
-local containers, health diagnostics, and scoped conversation persistence. It
-intentionally contains no AI agents, marketing workflows, or production prompts.
+local containers, health diagnostics, scoped conversation persistence, and
+message-linked image uploads. It intentionally contains no AI agents, marketing
+workflows, or production prompts.
 
 ## Prerequisites
 
@@ -99,3 +100,12 @@ API uses both values in every conversation and message query so a conversation
 identifier alone cannot cross a user or project boundary. These headers are the
 current trusted identity-boundary contract and must be populated from verified
 authentication context in a production deployment, not arbitrary client input.
+
+## Asset uploads
+
+`POST /api/assets` accepts a multipart image with `message_id`, `role`, and
+`file`, plus the same `X-User-ID` and `X-Project-ID` scope headers. JPEG, PNG,
+and WebP content is inspected from its bytes before it is written to the private
+S3-compatible bucket. Metadata is available through `GET /api/assets/{id}` or
+`GET /api/assets?message_id={id}`. Repeated content is checksum-deduplicated
+within a project while each attachment remains linked to its message.

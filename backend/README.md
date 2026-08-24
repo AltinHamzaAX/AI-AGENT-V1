@@ -16,3 +16,11 @@ Apply all schema and extension changes through Alembic:
 ```bash
 alembic upgrade head
 ```
+
+## Asset boundary
+
+Asset validation, application behavior, and storage/repository ports live under
+`app/shared/assets`. SQLAlchemy and S3-compatible implementations live under
+`app/infrastructure`. Uploads are scoped to a verified conversation message,
+stored privately, validated by decoded image content, and deduplicated by SHA-256
+without exposing MinIO-specific behavior to Posts code.
