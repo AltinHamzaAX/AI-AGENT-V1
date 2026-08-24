@@ -1,24 +1,10 @@
-from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
+from app.modules.posts.domain.enums import UnderstandingField
 from app.shared.assets.domain import AssetRole
-
-
-class UnderstandingField(StrEnum):
-    BUSINESS = "business"
-    BRAND = "brand"
-    PRODUCT_SERVICE = "product_service"
-    GOAL = "goal"
-    AUDIENCE = "audience"
-    MARKET = "market"
-    LOCATION = "location"
-    PLATFORM = "platform"
-    LANGUAGE = "language"
-    OFFER = "offer"
-    CTA_INTENT = "cta_intent"
 
 
 class ConversationTurn(BaseModel):

@@ -7,6 +7,7 @@ from app.modules.posts.agents.client_understanding import (
     ClientUnderstandingBrief,
     register_client_understanding_agent,
 )
+from app.modules.posts.domain.clarification import ClarificationEngine
 from app.modules.posts.domain.contracts import InvocationContext
 from app.modules.posts.domain.enums import PostWorkflowSection
 from app.modules.posts.domain.observability import ExecutionTraceRecorder
@@ -53,9 +54,11 @@ class ClientUnderstandingStageHandler:
         )
         if not isinstance(output, ClientUnderstandingBrief):
             raise TypeError("client understanding returned an invalid output type")
+        brief = output.model_dump(mode="json")
+        brief["clarification"] = ClarificationEngine().evaluate(output).model_dump(mode="json")
         return SupervisorStageResult(
             outputs={
-                PostWorkflowSection.BRIEF: output.model_dump(mode="json"),
+                PostWorkflowSection.BRIEF: brief,
             }
         )
 

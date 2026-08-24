@@ -186,6 +186,14 @@ async def test_client_understanding_extracts_lumma_brief_without_strategy_drift(
     ]
     assert UnderstandingField.AUDIENCE.value in brief["missing_fields"]
     assert UnderstandingField.OFFER.value in brief["missing_fields"]
+    assert brief["clarification"]["requires_user_input"] is False
+    assert brief["clarification"]["questions"] == []
+    classifications = {
+        item["field"]: item["classification"]
+        for item in brief["clarification"]["items"]
+    }
+    assert classifications["audience"] == "RESEARCHABLE"
+    assert classifications["offer"] == "OPTIONAL"
     assert brief["constraints"] == [
         "Use only verified business facts",
     ]
@@ -312,6 +320,37 @@ async def test_client_understanding_normalizes_goal_and_recovers_explicit_cta() 
     assert brief["business"] == "studio arkitekture"
     assert brief["goal"] == "me shume kliente"
     assert brief["cta_intent"] == "Kontakto tani"
+
+
+@pytest.mark.asyncio
+async def test_brand_name_alone_cannot_masquerade_as_the_promoted_product() -> None:
+    context = _context()
+    context.workflow_state["conversation_context"]["project_context"] = {}
+    context.workflow_state["conversation_context"]["latest_message"] = "Brandi quhet ARKA."
+    response = {
+        "business": "ARKA",
+        "brand": "ARKA",
+        "product_service": "ARKA",
+        "evidence": {
+            "business": "ARKA",
+            "brand": "ARKA",
+            "product_service": "ARKA",
+        },
+    }
+    handler = ClientUnderstandingStageHandler(
+        _provider_bundle(_SequenceLLM(json.dumps(response)))
+    )
+
+    result = await handler.execute(context)
+    brief = result.outputs[PostWorkflowSection.BRIEF]
+
+    assert brief["brand"] == "ARKA"
+    assert brief["product_service"] is None
+    assert brief["clarification"]["requires_user_input"] is True
+    assert [question["field"] for question in brief["clarification"]["questions"]] == [
+        "product_service",
+        "goal",
+    ]
 
 
 def test_supervisor_requires_conversation_context_before_understanding() -> None:
