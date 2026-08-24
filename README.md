@@ -3,8 +3,8 @@
 Promotiva is the foundation for an AI marketing platform with a conversational
 interface and two future bounded business modules: Posts and Campaigns. This
 repository currently provides application bootstraps, infrastructure boundaries,
-local containers, and health diagnostics only. It intentionally contains no AI
-agents, marketing workflows, prompts, or business database schema.
+local containers, health diagnostics, and scoped conversation persistence. It
+intentionally contains no AI agents, marketing workflows, or production prompts.
 
 ## Prerequisites
 

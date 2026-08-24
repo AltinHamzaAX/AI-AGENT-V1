@@ -17,9 +17,10 @@ workflows. `app/main.py` only constructs the application. Cross-cutting startup 
 shutdown behavior belongs in `core/lifecycle.py`.
 
 `app/infrastructure` contains technical implementations for PostgreSQL, Redis,
-queues, and object storage. `app/integrations` defines external AI and research
-provider boundaries. Provider interfaces keep vendor-specific clients out of
-business modules.
+queues, and object storage. Persistence contracts stay outside infrastructure;
+SQLAlchemy repositories and Unit of Work adapters implement those contracts.
+`app/integrations` defines external AI and research provider boundaries. Provider
+interfaces keep vendor-specific clients out of business modules.
 
 ## Runtime responsibilities
 
@@ -31,5 +32,6 @@ business modules.
 - `minio`: local S3-compatible object storage.
 - `minio-init`: idempotent local bucket initialization.
 
-No business database models, workflows, agents, or provider adapters are included
-in this foundation.
+Schema changes and database extensions are versioned with Alembic. The current
+business schema stores scoped conversations and messages; AI workflows, agents,
+and provider adapters remain future work.
