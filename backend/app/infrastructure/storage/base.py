@@ -1,5 +1,7 @@
-from typing import Protocol
+"""Compatibility export for the object-storage application port."""
 
+from app.shared.assets.contracts import AssetStorage
 
-class ObjectStorage(Protocol):
-    async def is_available(self) -> bool: ...
+ObjectStorage = AssetStorage
+
+__all__ = ["ObjectStorage"]

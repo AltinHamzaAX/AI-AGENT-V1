@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     s3_bucket: str = "promotiva"
     s3_access_key: str = Field(repr=False)
     s3_secret_key: str = Field(repr=False)
+    asset_max_size_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    asset_max_dimension: int = Field(default=12_000, gt=0)
+    asset_max_pixels: int = Field(default=40_000_000, gt=0)
 
     llm_provider: str = ""
     llm_model: str = ""
