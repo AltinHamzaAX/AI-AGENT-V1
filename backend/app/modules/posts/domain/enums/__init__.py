@@ -28,6 +28,7 @@ class GenerationArtifactKind(StrEnum):
 
 
 class PostWorkflowSection(StrEnum):
+    SUPERVISOR = "supervisor"
     CONVERSATION_CONTEXT = "conversation_context"
     BRIEF = "brief"
     SEMANTIC_CONTRACT = "semantic_contract"
