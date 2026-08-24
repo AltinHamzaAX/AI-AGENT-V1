@@ -21,4 +21,5 @@ class PostGenerationService(Protocol):
         *,
         post_id: UUID,
         scope: PostScope,
+        idempotency_key: str | None = None,
     ) -> PostGeneration: ...

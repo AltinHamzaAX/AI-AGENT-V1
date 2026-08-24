@@ -4,6 +4,7 @@ from app.models.assets import AssetModel
 from app.models.conversations import ConversationModel, MessageModel
 from app.models.posts import (
     GenerationArtifactModel,
+    PostGenerationJobModel,
     PostGenerationModel,
     PostGenerationStateModel,
     PostGenerationStateVersionModel,
@@ -16,6 +17,7 @@ __all__ = [
     "GenerationArtifactModel",
     "MessageModel",
     "PostGenerationModel",
+    "PostGenerationJobModel",
     "PostGenerationStateModel",
     "PostGenerationStateVersionModel",
     "PostModel",

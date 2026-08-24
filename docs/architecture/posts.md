@@ -15,16 +15,34 @@ workflow:
 ```text
 Post
   -> PostGeneration attempt 1..N
+       -> PostGenerationJob exactly 1
        -> GenerationArtifact 0..N
        -> PostGenerationState current version 1..N
             -> PostGenerationStateVersion snapshot 1..N
 ```
 
 Generation status is explicit (`pending`, `queued`, `running`, `reviewing`,
-`revision`, `completed`, `failed`, or `cancelled`). Creating an attempt does not
-run AI work in the HTTP request; worker dispatch belongs to a later ticket. A
+`revision`, `completed`, `failed`, or `cancelled`). Creating an attempt atomically
+creates a durable queued job and does not run AI work in the HTTP request. A
 nullable `campaign_id` keeps standalone and future Campaign-created posts on the
 same Posts model.
+
+## Durable generation queue
+
+PostgreSQL is the source of truth for generation jobs. Each generation owns one
+job ID, a bounded attempt count, execution timeout, availability time, worker
+lease, safe error code, and terminal state. Workers claim with row locking and
+`SKIP LOCKED`, so multiple workers cannot execute the same available job. A
+retryable failure is scheduled with backoff; exhausted retries become `dead`,
+while explicitly non-retryable errors become `failed`.
+
+An interrupted worker leaves a `running` job with a lease. Once that lease
+expires, another worker can reclaim the same persisted generation and resume
+from its versioned state. No request payload or in-memory queue is required for
+recovery. `Idempotency-Key` is hashed with the Posts scope and post ID; retrying
+the same HTTP generation request returns the original generation and job rather
+than creating a duplicate. Ticket 10 supplies the executor boundary, while
+Ticket 11 connects the Post Supervisor to it.
 
 The workflow state contains explicit sections for conversation context, brief,
 semantic contract, brand, product, assets, audience, research, marketing

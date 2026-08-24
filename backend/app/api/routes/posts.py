@@ -1,6 +1,7 @@
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from app.dependencies.posts import PostScopeDependency, PostsServiceDependency
 from app.modules.posts.domain.enums import PostWorkflowSection
@@ -14,6 +15,7 @@ from app.modules.posts.domain.exceptions import (
 )
 from app.modules.posts.schemas import (
     GenerationArtifactRead,
+    GenerationJobRead,
     PostCreate,
     PostGenerationRead,
     PostGenerationStateRead,
@@ -80,12 +82,40 @@ async def request_generation(
     post_id: UUID,
     scope: PostScopeDependency,
     service: PostsServiceDependency,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> PostGenerationRead:
     try:
-        generation = await service.request_generation(post_id=post_id, scope=scope)
+        generation = await service.request_generation(
+            post_id=post_id,
+            scope=scope,
+            idempotency_key=idempotency_key,
+        )
     except PostNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Post not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return PostGenerationRead.from_domain(generation)
+
+
+@router.get(
+    "/{post_id}/generations/{generation_id}/job",
+    response_model=GenerationJobRead,
+)
+async def get_generation_job(
+    post_id: UUID,
+    generation_id: UUID,
+    scope: PostScopeDependency,
+    service: PostsServiceDependency,
+) -> GenerationJobRead:
+    try:
+        job = await service.get_generation_job(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+    except PostGenerationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Post generation not found") from exc
+    return GenerationJobRead.from_domain(job)
 
 
 @router.get("/{post_id}/generations", response_model=list[PostGenerationRead])

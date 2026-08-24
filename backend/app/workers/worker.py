@@ -19,7 +19,10 @@ async def run() -> None:
     for signame in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(signame, stop_event.set)
 
-    logger.info("Promotiva worker ready; waiting for future jobs")
+    logger.info(
+        "Promotiva durable generation queue ready; "
+        "Post Supervisor execution awaits Ticket 11 wiring"
+    )
     await stop_event.wait()
 
 

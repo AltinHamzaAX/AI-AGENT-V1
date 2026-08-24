@@ -7,9 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 from app.modules.posts.domain.entities import GenerationArtifact, Post, PostGeneration
 from app.modules.posts.domain.enums import (
     GenerationArtifactKind,
+    GenerationJobStatus,
     GenerationStatus,
     PostWorkflowSection,
 )
+from app.modules.posts.domain.jobs import GenerationJob
 from app.modules.posts.domain.semantic_contract import (
     PROTECTED_SCALAR_FIELDS,
     PostSemanticContract,
@@ -62,6 +64,9 @@ class PostGenerationRead(BaseModel):
     post_id: UUID
     attempt: int
     status: GenerationStatus
+    job_id: UUID
+    job_status: GenerationJobStatus
+    deduplicated: bool
     created_at: datetime
     updated_at: datetime
 
@@ -72,8 +77,43 @@ class PostGenerationRead(BaseModel):
             post_id=generation.post_id,
             attempt=generation.attempt,
             status=generation.status,
+            job_id=generation.job_id,
+            job_status=generation.job_status,
+            deduplicated=generation.deduplicated,
             created_at=generation.created_at,
             updated_at=generation.updated_at,
+        )
+
+
+class GenerationJobRead(BaseModel):
+    id: UUID
+    generation_id: UUID
+    status: GenerationJobStatus
+    attempts: int
+    max_attempts: int
+    timeout_seconds: int
+    available_at: datetime
+    leased_until: datetime | None
+    last_error_code: str | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+    @classmethod
+    def from_domain(cls, job: GenerationJob) -> Self:
+        return cls(
+            id=job.id,
+            generation_id=job.generation_id,
+            status=job.status,
+            attempts=job.attempts,
+            max_attempts=job.max_attempts,
+            timeout_seconds=job.timeout_seconds,
+            available_at=job.available_at,
+            leased_until=job.leased_until,
+            last_error_code=job.last_error_code,
+            created_at=job.created_at,
+            updated_at=job.updated_at,
+            completed_at=job.completed_at,
         )
 
 

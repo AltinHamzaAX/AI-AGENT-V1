@@ -84,6 +84,48 @@ class PostGenerationModel(Base):
     )
 
 
+class PostGenerationJobModel(Base):
+    __tablename__ = "post_generation_jobs"
+    __table_args__ = (
+        CheckConstraint("attempts >= 0", name="non_negative_attempts"),
+        CheckConstraint("max_attempts > 0", name="positive_max_attempts"),
+        CheckConstraint("timeout_seconds > 0", name="positive_timeout_seconds"),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'retry_scheduled', 'completed', "
+            "'failed', 'dead')",
+            name="valid_status",
+        ),
+        UniqueConstraint("generation_id", name="uq_post_generation_jobs_generation"),
+        UniqueConstraint("idempotency_key", name="uq_post_generation_jobs_idempotency"),
+        Index("ix_post_generation_jobs_claim", "status", "available_at", "leased_until"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    generation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("post_generations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    leased_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    worker_id: Mapped[str | None] = mapped_column(String(200))
+    last_error_code: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class GenerationArtifactModel(Base):
     __tablename__ = "generation_artifacts"
     __table_args__ = (

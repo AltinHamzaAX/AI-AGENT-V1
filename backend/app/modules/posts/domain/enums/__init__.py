@@ -12,6 +12,15 @@ class GenerationStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class GenerationJobStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    RETRY_SCHEDULED = "retry_scheduled"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    DEAD = "dead"
+
+
 class GenerationArtifactKind(StrEnum):
     INTERMEDIATE = "intermediate"
     PREVIEW = "preview"
@@ -38,4 +47,9 @@ class PostWorkflowSection(StrEnum):
     REVISION_HISTORY = "revision_history"
 
 
-__all__ = ["GenerationArtifactKind", "GenerationStatus", "PostWorkflowSection"]
+__all__ = [
+    "GenerationArtifactKind",
+    "GenerationJobStatus",
+    "GenerationStatus",
+    "PostWorkflowSection",
+]
