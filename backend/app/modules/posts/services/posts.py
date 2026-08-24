@@ -242,6 +242,8 @@ class PostsService:
             raise SemanticContractHardFailError(
                 ("semantic_contract is protected; use the dedicated contract operation",)
             )
+        if section is PostWorkflowSection.SUPERVISOR:
+            raise ValueError("supervisor state is internal and cannot be written through API")
         validated_value = validate_section_value(section, value)
         state = await self._repository.update_workflow_state(
             generation_id=generation_id,

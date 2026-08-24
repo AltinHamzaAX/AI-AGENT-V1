@@ -415,8 +415,9 @@ async def test_generation_workflow_state_is_complete_versioned_and_persistent(
     initial = await post_client.get(base_path, headers=headers)
     assert initial.status_code == 200
     assert initial.json()["version"] == 1
-    assert initial.json()["schema_version"] == 1
+    assert initial.json()["schema_version"] == 2
     assert initial.json()["state"] == {
+        "supervisor": {},
         "conversation_context": {},
         "brief": {},
         "semantic_contract": {},
@@ -435,6 +436,16 @@ async def test_generation_workflow_state_is_complete_versioned_and_persistent(
         "quality": {},
         "revision_history": [],
     }
+
+    protected = await post_client.patch(
+        f"{base_path}/supervisor",
+        headers=headers,
+        json={"expected_version": 1, "value": {"current_stage": "production"}},
+    )
+    assert protected.status_code == 422
+    assert protected.json()["detail"] == (
+        "supervisor state is internal and cannot be written through API"
+    )
 
     brief = {"goal": "Launch", "platform": "instagram"}
     written = await post_client.patch(

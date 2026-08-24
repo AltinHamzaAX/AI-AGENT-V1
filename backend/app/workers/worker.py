@@ -20,8 +20,8 @@ async def run() -> None:
         loop.add_signal_handler(signame, stop_event.set)
 
     logger.info(
-        "Promotiva durable generation queue ready; "
-        "Post Supervisor execution awaits Ticket 11 wiring"
+        "Promotiva durable generation queue and Post Supervisor control-plane ready; "
+        "specialist stage handlers are registered by their owning tickets"
     )
     await stop_event.wait()
 

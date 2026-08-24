@@ -148,6 +148,7 @@ class GenerationArtifactRead(BaseModel):
 class WorkflowStateData(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
+    supervisor: dict[str, JsonValue]
     conversation_context: dict[str, JsonValue]
     brief: dict[str, JsonValue]
     semantic_contract: dict[str, JsonValue]

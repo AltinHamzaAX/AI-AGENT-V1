@@ -9,6 +9,9 @@ from app.infrastructure.database.repositories.generation_jobs import (
     SQLAlchemyGenerationJobRepository,
 )
 from app.infrastructure.database.repositories.posts import SQLAlchemyPostRepository
+from app.infrastructure.database.repositories.supervisor import (
+    SQLAlchemySupervisorCheckpointStore,
+)
 
 __all__ = [
     "SQLAlchemyAssetRepository",
@@ -16,4 +19,5 @@ __all__ = [
     "SQLAlchemyPostRepository",
     "SQLAlchemyGenerationJobRepository",
     "SQLAlchemyRepository",
+    "SQLAlchemySupervisorCheckpointStore",
 ]

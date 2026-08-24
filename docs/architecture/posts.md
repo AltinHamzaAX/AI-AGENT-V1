@@ -41,10 +41,11 @@ expires, another worker can reclaim the same persisted generation and resume
 from its versioned state. No request payload or in-memory queue is required for
 recovery. `Idempotency-Key` is hashed with the Posts scope and post ID; retrying
 the same HTTP generation request returns the original generation and job rather
-than creating a duplicate. Ticket 10 supplies the executor boundary, while
-Ticket 11 connects the Post Supervisor to it.
+than creating a duplicate. Ticket 10 supplies the executor boundary; Ticket 11
+connects the resumable Post Supervisor executor to it.
 
-The workflow state contains explicit sections for conversation context, brief,
+The workflow state contains a protected Supervisor checkpoint plus explicit
+sections for conversation context, brief,
 semantic contract, brand, product, assets, audience, research, marketing
 strategy, creative concept, copy, art direction, design specification,
 generation plan and artifacts, quality, and revision history. A write changes
@@ -52,6 +53,33 @@ exactly one section, validates whether it is an object or array, and uses an
 `expected_version` compare-and-swap. This makes concurrent stage writes safe and
 lets a worker resume from PostgreSQL after restart instead of relying on implicit
 LLM memory. Full snapshots are retained for every accepted version.
+
+## Post Supervisor
+
+`PostSupervisor` is a deterministic control-plane over a declared dependency
+graph. It returns structured `CONTINUE`, `SKIP`, `RETRY`, `REVISE`, or
+`STOP` decisions with a next stage, reason, required inputs, and state
+requirements. It does not perform specialist work and does not import providers,
+SQLAlchemy, or Campaign internals.
+
+`PostSupervisorExecutor` implements the durable generation executor boundary.
+It loads the latest PostgreSQL checkpoint, persists every routing decision using
+optimistic state versions, invokes only a registered stage handler, validates
+that handler outputs match the stage's declared sections, and marks the stage
+complete. Existing outputs are skipped; incomplete attempted stages are retried
+within their stage policy; pending revisions route to the smallest declared
+stage; and quality hard failures terminate. Completion still requires an
+explicit quality `PASS`.
+
+Supervisor progress records current/completed/skipped and revision-invalidated
+stages, requested optional skips, per-stage attempts, and the latest decision.
+A targeted revision invalidates only its stage and transitive downstream
+dependents so stale outputs are recomputed and quality review runs again. This
+makes restart recovery
+state-driven rather than dependent on an in-memory list of calls. The checkpoint
+is protected from the public generic state-write operation. The semantic
+contract remains immutable and is validated before persistence. Specialist stage
+handlers are introduced by their own tickets.
 
 ## Semantic contract
 
@@ -67,8 +95,8 @@ replace it with a different contract returns `SEMANTIC_CONTRACT_HARD_FAIL`.
 Downstream stages can submit only the semantic assertions they make. Comparison
 normalizes Unicode, case, and whitespace while preserving the exact persisted
 truth. Product/offer/fact drift, a forbidden claim, a missing required asset, or
-a mismatched fingerprint is a hard failure. The future Supervisor may route on
-this structured decision but does not own or rewrite the contract.
+a mismatched fingerprint is a hard failure. The Supervisor routes on this
+structured decision but does not own or rewrite the contract.
 
 ## Agent framework and tool registry
 

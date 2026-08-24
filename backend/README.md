@@ -46,8 +46,17 @@ Generation requests atomically create a PostgreSQL-backed job and return its
 `job_id`. An optional `Idempotency-Key` prevents duplicate generation attempts.
 The worker runtime claims jobs with expiring leases, applies timeout and bounded
 retry policies, and persists `completed`, `failed`, or `dead` outcomes. Expired
-leases are reclaimable after process restart; the Post Supervisor is connected
-through the `GenerationExecutor` boundary in its own ticket.
+leases are reclaimable after process restart.
+
+## Post Supervisor
+
+The generation worker delegates workflow execution through
+`PostSupervisorExecutor`. Its declared stage graph evaluates dependencies,
+required state, existing outputs, retry counts, targeted revisions, and quality
+termination gates. Every decision and stage completion is persisted in the
+versioned `supervisor` workflow section, so a reclaimed job resumes from its
+checkpoint. Stage handlers write only their declared sections; provider and
+specialist logic remain outside the Supervisor.
 
 ## Agent and tool framework
 
