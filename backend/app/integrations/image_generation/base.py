@@ -1,5 +1,5 @@
-from typing import Protocol
+from app.modules.posts.providers import ImageProvider
 
+ImageGenerationProvider = ImageProvider
 
-class ImageGenerationProvider(Protocol):
-    async def generate(self, prompt: str) -> bytes: ...
+__all__ = ["ImageGenerationProvider"]

@@ -1,5 +1,3 @@
-from typing import Protocol
+from app.modules.posts.providers import VisionProvider
 
-
-class VisionProvider(Protocol):
-    async def analyze(self, image: bytes) -> dict[str, object]: ...
+__all__ = ["VisionProvider"]

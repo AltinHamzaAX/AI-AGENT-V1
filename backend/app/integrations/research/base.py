@@ -1,5 +1,3 @@
-from typing import Protocol
+from app.modules.posts.providers import ResearchProvider
 
-
-class ResearchProvider(Protocol):
-    async def search(self, query: str) -> list[dict[str, object]]: ...
+__all__ = ["ResearchProvider"]

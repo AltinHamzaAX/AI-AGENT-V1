@@ -14,14 +14,18 @@ class S3Storage:
         client: BaseClient | None = None,
         bucket: str | None = None,
         endpoint_url: str | None = None,
+        access_key: str | None = None,
+        secret_key: str | None = None,
     ) -> None:
-        settings = get_settings()
-        self._bucket = bucket or settings.s3_bucket
+        settings = None
+        if any(value is None for value in (bucket, endpoint_url, access_key, secret_key)):
+            settings = get_settings()
+        self._bucket = bucket or settings.s3_bucket  # type: ignore[union-attr]
         self._client: BaseClient = client or boto3.client(
             "s3",
-            endpoint_url=endpoint_url or settings.s3_endpoint,
-            aws_access_key_id=settings.s3_access_key,
-            aws_secret_access_key=settings.s3_secret_key,
+            endpoint_url=endpoint_url or settings.s3_endpoint,  # type: ignore[union-attr]
+            aws_access_key_id=access_key or settings.s3_access_key,  # type: ignore[union-attr]
+            aws_secret_access_key=secret_key or settings.s3_secret_key,  # type: ignore[union-attr]
             config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
         )
 
