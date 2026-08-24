@@ -111,3 +111,20 @@ product, vehicle, and packaging assets are marked for identity preservation.
 The output schema rejects research, positioning, strategy, concept, copy, or
 design fields. The Supervisor requires `conversation_context` before routing to
 this stage.
+
+## Brand & Product Strategist Agent
+
+The Ticket 15 specialist consumes only the immutable semantic contract and
+writes exactly the `brand` and `product` workflow sections. Protected company,
+brand, product, offer, constraint, asset, and fingerprint values are rebuilt
+from the contract rather than trusted to the model.
+
+Every product feature must cite a verified `required_facts` key and is expressed
+as `FEATURE -> BENEFIT -> CUSTOMER VALUE`. Brand and product facts are explicitly
+classified without dropping any required fact, while every USP candidate keeps
+its supporting fact references. Unknown facts, product replacement, forbidden
+claims, or downstream strategy/copy fields fail closed under the bounded agent
+retry policy. Generated internal analysis is written in concise English for
+consistent model quality, while authoritative names, offers, and fact values
+remain exactly as supplied. The requested content language is consumed later by
+the Copywriter stage.

@@ -123,6 +123,25 @@ hallucination or substitution. Invalid structured output follows the bounded
 AgentRuntime retry policy and is observable through AgentRun and ProviderCall
 traces.
 
+## Brand and Product analysis
+
+`BrandProductStrategistAgent` runs after the immutable semantic contract exists.
+It reads no provider-specific objects and produces only the `brand` and `product`
+state sections. Authoritative identity, offer, required facts, forbidden claims,
+required assets, constraints, and contract fingerprint are copied from the
+validated contract at the application boundary.
+
+The model may reason about identity, personality, benefits, customer value, and
+USP candidates, but every feature and USP must cite a real required-fact key.
+Every required fact must be classified as brand or product information. The
+strict provider-output schema contains no audience research, positioning,
+marketing strategy, creative concept, copy, art direction, or design fields.
+Unsupported facts and forbidden claims are rejected before workflow persistence.
+The specialist writes internal analytical prose in English for stable model
+quality, but preserves authoritative proper nouns, offers, and fact values
+verbatim. This does not change the semantic contract's requested language; final
+localized content remains a downstream Copywriter responsibility.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a

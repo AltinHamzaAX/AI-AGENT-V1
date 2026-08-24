@@ -1,5 +1,10 @@
 """Posts-specific agent framework and specialist packages."""
 
+from app.modules.posts.agents.brand_product import (
+    BrandProductAnalysis,
+    BrandProductInput,
+    BrandProductStrategistAgent,
+)
 from app.modules.posts.agents.client_understanding import (
     ClientUnderstandingAgent,
     ClientUnderstandingBrief,
@@ -15,6 +20,9 @@ __all__ = [
     "AgentExecutionContext",
     "AgentHandler",
     "AgentRuntime",
+    "BrandProductAnalysis",
+    "BrandProductInput",
+    "BrandProductStrategistAgent",
     "ClientUnderstandingAgent",
     "ClientUnderstandingBrief",
     "ClientUnderstandingInput",
