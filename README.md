@@ -31,7 +31,8 @@ docker compose logs -f api
 
 Open the frontend at <http://localhost:3000>. API liveness is available at
 <http://localhost:8000/api/health>, and dependency readiness at
-<http://localhost:8000/api/health/ready>.
+<http://localhost:8000/api/health/ready>. Readiness verifies PostgreSQL,
+the pgvector extension, Redis, and the configured S3-compatible bucket.
 
 ## Service ports
 
