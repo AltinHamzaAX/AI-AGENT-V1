@@ -41,3 +41,14 @@ It is created idempotently through a dedicated service operation, then protected
 by a canonical SHA-256 fingerprint. Downstream assertions can be checked without
 an LLM call; product/fact drift, forbidden claims, missing required assets, or a
 fingerprint mismatch produce a structured `SEMANTIC_CONTRACT_HARD_FAIL`.
+
+## Agent and tool framework
+
+Posts agents execute through `AgentRuntime`; tools are available only through a
+gateway bound to the registered agent identity. Authorization requires both the
+agent's `allowed_tools` and the tool's `allowed_agents`. Inputs and outputs are
+validated with declared Pydantic schemas, execution is bounded by explicit
+timeout/retry policies, and lifecycle events carry correlation, post, and
+generation identifiers without logging request payloads. Creative Director is
+always denied final approval, database mutation, and asset replacement tools,
+even if a definition is misconfigured to allow them.

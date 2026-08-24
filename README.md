@@ -131,3 +131,8 @@ product, primary entity, objective, audience, market/location, offer, CTA,
 platform, language, required facts/assets, forbidden claims, and constraints.
 It is fingerprinted and write-once; deterministic validation returns `HARD_FAIL`
 instead of allowing a later stage to silently change product or offer truth.
+
+The Posts agent runtime and tool registry are internal worker boundaries, not
+public tool-execution endpoints. Every registered agent and tool declares typed
+input/output schemas, bilateral allowlists, timeout and retry policy. Unauthorized
+calls fail closed and emit correlation-aware audit events without payload data.
