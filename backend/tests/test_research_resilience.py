@@ -93,7 +93,9 @@ async def test_failed_report_is_evidence_free_and_leaks_no_provider_detail() -> 
 
     report = result.trend
     assert report.status is ResearchStatus.FAILED
-    assert report.error == "RuntimeError"
+    # Trend runs several searches, so a defect in all of them is reported as a
+    # category failure rather than by whatever internal type happened to raise.
+    assert report.error == "ProviderError"
     assert "sk-live-secret" not in report.model_dump_json()
     assert report.sources == []
     assert report.findings == []
@@ -109,7 +111,7 @@ async def test_analyzer_failure_degrades_only_the_analyzed_categories() -> None:
 
     result = await _service(_ResearchProvider(), _BadLLM()).run(_payload())
 
-    analyzed = {"market", "competitor", "social"}
+    analyzed = {"market", "competitor", "social", "visual_reference", "trend", "platform"}
     for category in CATEGORIES:
         report = getattr(result, category)
         if category in analyzed:
@@ -133,9 +135,10 @@ async def test_no_search_is_abandoned_when_a_tool_fails_immediately() -> None:
     provider = _FailFast()
     result = await _service(provider).run(_payload())
 
-    # 6 market + 6 competitor + 7 social + 5 single-query tools, less the
-    # trend search that raised before it was recorded.
-    assert len(provider.requests) == 23
+    # 6 market + 6 competitor + 7 social + 4 visual reference + 2 platform
+    # + audience + brand product, less the four trend searches that raised
+    # before they were recorded.
+    assert len(provider.requests) == 27
     completed = [c for c in CATEGORIES if getattr(result, c).status is ResearchStatus.SUCCEEDED]
     assert len(completed) == len(CATEGORIES) - 1
     assert result.trend.status is ResearchStatus.FAILED

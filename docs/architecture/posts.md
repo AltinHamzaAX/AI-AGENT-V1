@@ -290,6 +290,28 @@ whole category; a response that grounds nothing at all still fails. Unsupported
 observations are omitted, and the report names missing dimensions through an
 evidence-coverage contract.
 
+Visual reference, trend and platform are analyzed on the same terms. Visual
+reference separates composition, subject scale, negative space, text density,
+headline region, typography, photography, lighting, colors, CTA, logo, graphic
+elements, energy, and texture; it describes creative that was observed and is
+never design direction, and it still collects referenced images, which are
+evidence on their own and can carry the category without a single text source.
+Fourteen attributes do not cost fourteen searches: dimensions answered by the
+same kind of page declare the same query, identical queries are searched once,
+and every dimension that asked is credited with the result, so provenance
+survives the saving.
+
+Trend separates current, emerging, overused, and declining, collecting what to
+avoid as deliberately as what to adopt. Each trend is judged three times and
+independently — brand fit, audience fit, objective fit — against the brief's
+own goal, which the research context carries for this purpose. Usability is not
+a model's to assert: like a competitor report's safe_use, it is computed from
+the three fits, and a trend is usable only when all three hold. A trend that
+fits none of them is still reported, because knowing a trend is wrong for this
+brief is evidence too. Platform separates the formats a platform supports from
+the constraints it publishes, and searches the platform's own documentation
+rather than whoever ranks for it locally.
+
 Excerpts are filtered before they are ever shown. Runs of link-only lines are
 navigation rather than evidence, and the span the analyzer sees is ranked by
 market relevance and price density rather than taken from the front of the

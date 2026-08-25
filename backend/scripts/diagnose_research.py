@@ -31,7 +31,10 @@ from app.modules.posts.tools.research import (  # noqa: E402
     CompetitorResearchTool,
     LLMResearchAnalyzer,
     MarketResearchTool,
+    PlatformResearchTool,
     SocialResearchTool,
+    TrendResearchTool,
+    VisualReferenceTool,
     validate_external_research_input,
 )
 from app.modules.posts.tools.research.analysis import (  # noqa: E402
@@ -40,10 +43,16 @@ from app.modules.posts.tools.research.analysis import (  # noqa: E402
     _system_prompt,
 )
 
+#: Stage names in lifecycle order, used to report trend usability.
+TREND_STAGES = ("current", "emerging", "overused", "declining")
+
 TOOLS = {
     "market": MarketResearchTool,
     "competitor": CompetitorResearchTool,
     "social": SocialResearchTool,
+    "visual": VisualReferenceTool,
+    "trend": TrendResearchTool,
+    "platform": PlatformResearchTool,
 }
 
 
@@ -64,6 +73,10 @@ async def _run(name: str) -> None:
     )
     _line("category", name)
     _line("sources", f"{len(search_only.sources)} (search {time.perf_counter() - started:.0f}s)")
+    plan = tool_type(providers.research).build_dimension_queries(context)
+    _line("searches", f"{len(set(plan.values()))} for {len(plan)} dimensions")
+    if search_only.visual_references:
+        _line("images", len(search_only.visual_references))
     if not search_only.sources:
         _line("verdict", "NO SOURCES - search problem, not the model")
         return
@@ -102,10 +115,32 @@ async def _run(name: str) -> None:
     _line("coverage", f"{coverage.status.value} ratio={coverage.coverage_ratio:.2f}")
     _line("covered", ", ".join(coverage.covered_dimensions) or "-")
     _line("missing", ", ".join(coverage.missing_dimensions) or "-")
-    for dimension in coverage.covered_dimensions[:2]:
+    for dimension in coverage.covered_dimensions[:3]:
         insight = getattr(report.analysis, dimension)[0]
         _line(f"  {dimension}", f"[{insight.confidence.value}] {insight.observation[:90]}")
         _line("  quote", f'"{insight.evidence[0].quote[:80]}"')
+    usable = getattr(report.analysis, "usable", None)
+    if usable is not None:
+        # The whole point of the trend engine: a trend is evidence, and only
+        # a trend that fits brand, audience and objective may be acted on.
+        total = sum(len(getattr(report.analysis, stage)) for stage in TREND_STAGES)
+        _line("usable", f"{len(usable)}/{total} trends passed all three fits")
+        for stage in TREND_STAGES:
+            for insight in getattr(report.analysis, stage):
+                fits = (
+                    "".join(
+                        mark
+                        for mark, ok in (
+                            ("B", insight.brand_fit),
+                            ("A", insight.audience_fit),
+                            ("O", insight.objective_fit),
+                        )
+                        if ok
+                    )
+                    or "-"
+                )
+                verdict = "USE" if insight.usable else "skip"
+                _line(f"  {stage}", f"[{verdict}] fits={fits:<3} {insight.observation[:70]}")
 
 
 if __name__ == "__main__":

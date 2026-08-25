@@ -47,6 +47,7 @@ def _context() -> ResearchContext:
         location="Prishtina airport",
         platform="Instagram",
         language="Albanian",
+        objective="Increase airport pickup bookings",
         required_facts={"pickup": "24/7"},
         contract_fingerprint="a" * 64,
     )
@@ -111,7 +112,7 @@ async def test_gate_bounds_provider_calls_rather_than_tools() -> None:
 
     await service.run(_payload())
 
-    assert len(provider.requests) == 24
+    assert len(provider.requests) == 31
     assert provider.peak == 4, "the gate must saturate to its limit and never exceed it"
 
 

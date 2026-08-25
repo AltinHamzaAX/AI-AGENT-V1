@@ -80,6 +80,9 @@ class ResearchContext(BaseModel):
     location: str | None
     platform: str
     language: str
+    #: The brief's goal, carried so trend evidence can be judged against what
+    #: this post is actually for rather than against the market in general.
+    objective: str
     required_facts: dict[str, str]
     contract_fingerprint: str = Field(min_length=64, max_length=64)
 
@@ -259,6 +262,29 @@ class EvidenceCoverage(BaseModel):
         return self
 
 
+class TrendInsight(ResearchInsight):
+    """A trend, plus whether this brief is allowed to act on it.
+
+    A trend is evidence about the market, never permission to use it. Three
+    fits are judged separately and reported separately, so a trend that is
+    real but wrong for this brand, this audience, or this objective is still
+    recorded as an observation and simply is not usable.
+    """
+
+    brand_fit: bool
+    audience_fit: bool
+    objective_fit: bool
+    #: Never taken from the model. Like CompetitorResearchAnalysis.safe_use,
+    #: this is our invariant: whatever a model asserts, a trend is usable only
+    #: when all three fits hold.
+    usable: bool = False
+
+    @model_validator(mode="after")
+    def usability_follows_the_three_fits(self) -> "TrendInsight":
+        self.usable = self.brand_fit and self.audience_fit and self.objective_fit
+        return self
+
+
 class MarketResearchAnalysis(BaseModel):
     """Market evidence only; downstream Marketing Strategy owns decisions."""
 
@@ -328,7 +354,72 @@ class SocialResearchAnalysis(BaseModel):
     compositions: list[ResearchInsight] = Field(default_factory=list, max_length=10)
 
 
-ResearchAnalysis = MarketResearchAnalysis | CompetitorResearchAnalysis | SocialResearchAnalysis
+class VisualReferenceAnalysis(BaseModel):
+    """What observed creative looks like, never what ours should look like.
+
+    Art Direction decides this post. These dimensions describe references that
+    were found, which is why every one of them is an observation with a quote
+    behind it rather than a setting.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    composition: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    subject_scale: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    negative_space: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    text_density: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    headline_region: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    typography: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    photography: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    lighting: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    colors: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    cta: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    logo: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    graphic_elements: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    energy: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    texture: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+
+
+class TrendAnalysis(BaseModel):
+    """Trends by lifecycle stage, each carrying its own usability."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current: list[TrendInsight] = Field(default_factory=list, max_length=10)
+    emerging: list[TrendInsight] = Field(default_factory=list, max_length=10)
+    #: Overused and declining trends are collected deliberately. Knowing what
+    #: to avoid is evidence too, and it is the half a trend feed never gives.
+    overused: list[TrendInsight] = Field(default_factory=list, max_length=10)
+    declining: list[TrendInsight] = Field(default_factory=list, max_length=10)
+
+    @property
+    def usable(self) -> list[TrendInsight]:
+        """Every trend this brief may act on, across all four stages."""
+        return [
+            insight
+            for stage in (self.current, self.emerging, self.overused, self.declining)
+            for insight in stage
+            if insight.usable
+        ]
+
+
+class PlatformAnalysis(BaseModel):
+    """What the platform accepts, from the platform's own documentation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    formats: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+    constraints: list[ResearchInsight] = Field(default_factory=list, max_length=10)
+
+
+ResearchAnalysis = (
+    MarketResearchAnalysis
+    | CompetitorResearchAnalysis
+    | SocialResearchAnalysis
+    | VisualReferenceAnalysis
+    | TrendAnalysis
+    | PlatformAnalysis
+)
 
 
 class ResearchReport(BaseModel):
@@ -403,6 +494,9 @@ class ResearchReport(BaseModel):
             ResearchCategory.MARKET: MarketResearchAnalysis,
             ResearchCategory.COMPETITOR: CompetitorResearchAnalysis,
             ResearchCategory.SOCIAL: SocialResearchAnalysis,
+            ResearchCategory.VISUAL_REFERENCE: VisualReferenceAnalysis,
+            ResearchCategory.TREND: TrendAnalysis,
+            ResearchCategory.PLATFORM: PlatformAnalysis,
         }.get(self.category)
         if self.analysis is not None and (
             expected_analysis is None or not isinstance(self.analysis, expected_analysis)
@@ -460,6 +554,10 @@ __all__ = [
     "EvidenceCoverageStatus",
     "CompetitorResearchAnalysis",
     "MarketResearchAnalysis",
+    "PlatformAnalysis",
+    "TrendAnalysis",
+    "TrendInsight",
+    "VisualReferenceAnalysis",
     "ResearchCategory",
     "ResearchAnalysis",
     "ResearchConfidence",
