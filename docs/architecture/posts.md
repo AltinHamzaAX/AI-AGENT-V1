@@ -205,8 +205,12 @@ Design executes.
 
 Requests are targeted rather than generic. Each tool declares its provider
 search index, recency window, geo-targeting, and pinned domains, so market
-tools narrow to the resolved country, trend research filters on recency, and
-platform research reads the platform's own documentation. Markets the provider
+tools narrow to the resolved country and platform research reads the platform's
+own documentation. Trend research deliberately does neither: measured live, a
+query naming the exact entity and market on the news index returned one usable
+source in five where the general index returned five, so recency is ranked
+through freshness rather than filtered for, and the market is applied by the
+fit gate instead of by the index. Markets the provider
 cannot express resolve to no country instead of a neighbouring one, with Kosovo
 deliberately mapped to Albania and reconciled afterwards by `locality_score`.
 
@@ -321,6 +325,60 @@ the parts it joins are separated by an explicit break the model is told not to
 quote across. Search excerpts are treated as untrusted input. Competitor research is tagged
 `differentiate_do_not_copy`, and any instruction to copy or replicate a
 competitor fails validation.
+
+## Marketing Strategy
+
+The Marketing Strategist is the first stage that decides rather than gathers.
+It reads the understood brief, semantic contract, brand and product analysis,
+Audience Intelligence and all eight research reports, and returns twelve decisions:
+business objective, segmentation, targeting, positioning, customer insight,
+customer tension, USP, value proposition, marketing angle, single-minded
+message, desired reaction, and CTA strategy, plus the message framework.
+
+Every decision carries its reasoning and what that reasoning rests on. The
+rationale is a required field rather than a request in a prompt, because a
+strategy whose reasoning is optional degrades into assertions, and an assertion
+cannot be reviewed or corrected by a later stage. Each decision cites basis
+identifiers drawn from an allowlist built from the inputs themselves, the same
+mechanism Audience Intelligence uses: a decision that cannot be grounded in
+supplied evidence is a decision the strategist may not make.
+
+Allowlisting alone is not treated as grounding. Each decision has a mandatory
+evidence shape: positioning needs a supplied target and verified product value;
+customer insight and tension need audience evidence; USP needs a product
+feature-benefit chain or candidate; value proposition, angle and message need
+both product value and audience evidence; CTA needs the declared intent and
+objective. Deterministic gates additionally reject unknown named entities,
+unsupported numbers, prices, guarantees, free benefits and superlatives. This
+prevents a valid basis identifier from laundering an invented claim.
+The minimum provenance set is application-owned: exact model-selected IDs are
+preserved, unambiguous prefixes are normalized, unsupported IDs are discarded,
+and missing mandatory foundations are attached deterministically from the
+upstream allowlist. The model therefore owns the decision and rationale, not
+fragile citation bookkeeping; semantic and claims gates still fail closed.
+
+The principles are structural, not decorative. Each field is bound to the
+discipline it answers to — segmentation and targeting to STP, positioning to
+positioning, the USP to USP — and a decision that labels itself as a different
+discipline is rejected, because a targeting call labelled "positioning" has not
+made a positioning decision. Targeting must name one of the supplied audience
+segments; the USP must descend from a supplied product feature-benefit chain or
+USP candidate, so it states what this product verifiably does better rather
+than what sounds appealing; the customer tension must build on the tension
+Audience Intelligence found; the business objective belongs to the brief's goal
+and the CTA strategy to the declared CTA intent. The single-minded message must
+be one sentence, since two sentences are two messages and a post carrying two
+carries neither; additive multi-promise forms are rejected as well. PAS requires
+a supplied pain point or tension, while AIDA requires both objective and audience
+context. Either may be declined, which is why "none" is a first-class answer.
+
+Assembling five upstream outputs is the first point where they could silently
+disagree, so every input's contract fingerprint is checked against the contract
+before any provider call. Evidence gaps travel with the strategy: audience
+limitations and missing research dimensions are carried onto the output, so a
+later stage inherits the uncertainty rather than only the decisions. Forbidden
+claims fail the whole strategy, and copy, headlines, art direction and design
+remain out of scope: this stage produces the thinking that later stages execute.
 
 ## Agent framework and tool registry
 
