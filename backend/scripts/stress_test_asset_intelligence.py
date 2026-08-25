@@ -93,9 +93,7 @@ def _scenarios() -> tuple[Scenario, ...]:
         Scenario(
             name="vehicle_without_primary_intent",
             message="This vehicle is a reference attachment; no primary-product claim is made.",
-            attachments=(
-                _attachment(vehicle_reference, "vehicle", "vehicle-reference.png"),
-            ),
+            attachments=(_attachment(vehicle_reference, "vehicle", "vehicle-reference.png"),),
             expected_roles={vehicle_reference: "vehicle"},
         ),
         Scenario(
@@ -109,13 +107,9 @@ def _scenarios() -> tuple[Scenario, ...]:
                 _attachment(matrix_ids["primary_product"], "product", "product.png"),
                 _attachment(matrix_ids["packaging"], "packaging", "packaging.png"),
                 _attachment(matrix_ids["environment"], "environment", "venue.png"),
-                _attachment(
-                    matrix_ids["background_reference"], "background", "background.png"
-                ),
+                _attachment(matrix_ids["background_reference"], "background", "background.png"),
                 _attachment(matrix_ids["style_reference"], "style_reference", "style.png"),
-                _attachment(
-                    matrix_ids["supporting_asset"], "supporting_asset", "support.png"
-                ),
+                _attachment(matrix_ids["supporting_asset"], "supporting_asset", "support.png"),
                 _attachment(matrix_ids["inspiration_only"], "inspiration", "mood.png"),
             ),
             expected_roles={identifier: role for role, identifier in matrix_ids.items()},
@@ -225,9 +219,7 @@ def _verify_valid_usage(assets: list[AssetPolicy]) -> None:
 def _verify_hard_fail_matrix(all_assets: list[AssetPolicy]) -> None:
     protected = next(asset for asset in all_assets if asset.role.value == "primary_product")
     logo = next(asset for asset in all_assets if asset.role.value == "brand_logo")
-    background = next(
-        asset for asset in all_assets if asset.role.value == "background_reference"
-    )
+    background = next(asset for asset in all_assets if asset.role.value == "background_reference")
 
     failures = (
         AssetUsageAssertion(

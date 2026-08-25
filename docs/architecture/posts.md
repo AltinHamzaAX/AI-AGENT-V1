@@ -184,8 +184,10 @@ inspiration references may continue according to their explicit policy.
 runs `MarketResearchTool`, `CompetitorResearchTool`, `AudienceResearchTool`,
 `SocialResearchTool`, `VisualReferenceTool`, `TrendResearchTool`,
 `PlatformResearchTool`, and `BrandProductResearchTool` with bounded concurrency.
-Each tool depends only on the provider-neutral research port and returns the same
-typed report contract.
+Each tool depends on provider-neutral ports and returns the same typed report
+envelope. Three Ticket 19 tools additionally use the provider-neutral LLM port
+to convert untrusted search excerpts into strict market, competitor, and social
+analysis schemas.
 
 Reports contain a canonical query, status, provider, optional provider summary,
 source-linked findings, source excerpts, retrieval and expiry timestamps,
@@ -200,6 +202,103 @@ evidence. The Supervisor stage validates semantic-contract and Audience
 Intelligence identity before any provider call and writes only `research`.
 Research remains evidence: Marketing Strategy decides, Creative interprets, and
 Design executes.
+
+Requests are targeted rather than generic. Each tool declares its provider
+search index, recency window, geo-targeting, and pinned domains, so market
+tools narrow to the resolved country, trend research filters on recency, and
+platform research reads the platform's own documentation. Markets the provider
+cannot express resolve to no country instead of a neighbouring one, with Kosovo
+deliberately mapped to Albania and reconciled afterwards by `locality_score`.
+
+Source confidence follows a weighted composite of relevance, authority,
+locality and freshness. Locality folds diacritics and compares stems so
+local-language pages are recognised as local, and ignores generic geography
+words. Freshness is optional: an unknown publication date redistributes its
+weight across the measured signals rather than scoring as stale.
+
+Structured tools request extracted page bodies rather than search snippets, so
+the analyzer has real text to quote, and dimension searches request more
+results because result count does not change a search's cost. Cache keys are
+scoped to the canonical query, the market and location, and the tool's request
+shaping — never the contract fingerprint, which covers fields that never reach
+a search and made every report private to one generation. Reports are therefore
+reused across generations of the same client and market.
+
+`VisualReferenceTool` declares image collection, so the provider port carries
+observed images and the report exposes `visual_references` with URL,
+description, and retrieval time. A visual reference report may succeed on
+images alone. Images are referenced, never fetched or stored, and remain
+research evidence rather than art direction.
+
+Dimension searches inside a structured tool run concurrently, and the bounded
+concurrency applies to provider calls rather than to tools, so multi-dimension
+tools no longer block single-query ones. A failed dimension is recorded in
+`degraded_dimensions` and loses only that angle; a category fails only when all
+of its dimensions do. Findings carry a bounded extract of their source rather
+than a second copy of the excerpt, keeping the persisted research section from
+storing the same evidence twice.
+
+Provider failures are typed by kind. A spent plan allowance and a throttle are
+distinct from a generic failure because the operational response differs, and
+the distinction is preserved through dimension aggregation, the stage-level
+raise, and the recorded measurements.
+
+Each run emits typed stage and per-category measurements — status, cache hit,
+duration, confidence, source counts, degraded dimensions, and coverage — through
+a sink rather than into workflow state, keeping the evidence contract free of
+operational data. The orchestration layer adapts them onto the execution trace
+timeline as one tool record per category plus a generation-step record for the
+stage. A failing sink is logged and ignored.
+
+Time is bounded at three nested levels — one provider call, one category, and
+the stage — each configured and cross-validated against the generation job
+timeout. A call that overruns degrades its dimension, a category that overruns
+becomes a `failed` report, and an exhausted stage budget leaves already
+completed categories intact because each tool is bounded rather than the whole
+gather.
+
+Tools degrade independently. A failing tool yields a typed `failed` report for
+its category with a safe error code, distinct from `no_results`, while the
+other categories complete; the service raises only when every category fails,
+leaving stage retry to the Supervisor. Empty and failed reports are never
+cached, so a transient outage cannot be served back to the retry that was meant
+to recover from it.
+
+The pipeline is English: queries, observations, and downstream inputs are
+English for consistent model quality. Evidence quotes stay verbatim in their
+source language because they are verified against the source excerpt, and carry
+an optional English translation. Topical fit is enforced by retrieval, not by
+keyword-matching free text, so local-language evidence is never discarded;
+keyword agreement only caps an insight's confidence, and the cap is reported in
+evidence-coverage limitations.
+
+Market analysis explicitly separates category context, expectations, offers,
+positioning patterns, and evidence-supported opportunities. Competitor analysis
+separates messaging, offers, CTA, visual language, differentiation, and overused
+patterns. Social analysis separates platform patterns, text density, CTA, logo
+placement, photography, graphic systems, and compositions. Every dimension uses
+a focused query. Low-relevance results are filtered, and each retained source is
+scored for authority, locality, freshness, and overall quality. The model cites
+only temporary source IDs and exact evidence quotes; the application verifies
+the quote against the source excerpt and checks that the source was collected
+for that dimension. A quote that is verbatim in a different supplied source is
+re-attributed to the source it came from: models copy spans correctly and then
+mislabel them, and the span decides which page it belongs to. A quote that
+matches nothing is dropped along with its own evidence item and reported in
+evidence-coverage limitations, so one bad citation costs itself rather than the
+whole category; a response that grounds nothing at all still fails. Unsupported
+observations are omitted, and the report names missing dimensions through an
+evidence-coverage contract.
+
+Excerpts are filtered before they are ever shown. Runs of link-only lines are
+navigation rather than evidence, and the span the analyzer sees is ranked by
+market relevance and price density rather than taken from the front of the
+page, which on aggregator sites is a language picker. Selection never invents
+or reorders text, so quotes stay verifiable against the untrimmed excerpt, and
+the parts it joins are separated by an explicit break the model is told not to
+quote across. Search excerpts are treated as untrusted input. Competitor research is tagged
+`differentiate_do_not_copy`, and any instruction to copy or replicate a
+competitor fails validation.
 
 ## Agent framework and tool registry
 

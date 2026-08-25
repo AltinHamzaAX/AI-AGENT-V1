@@ -170,9 +170,7 @@ def test_targeted_revision_and_hard_gate_override_normal_routing() -> None:
         "client_understanding",
         "semantic_contract",
     ]
-    state = supervisor.mark_stage_completed(
-        state, SupervisorStage.CLIENT_UNDERSTANDING
-    )
+    state = supervisor.mark_stage_completed(state, SupervisorStage.CLIENT_UNDERSTANDING)
     recompute = supervisor.decide(state)
     assert recompute.action is SupervisorAction.CONTINUE
     assert recompute.next_stage is SupervisorStage.SEMANTIC_CONTRACT
@@ -291,9 +289,7 @@ async def test_executor_runs_registered_graph_and_persists_resumable_progress() 
     store = _InMemoryStore(_state())
     recorder = InMemoryExecutionTraceRecorder()
     understanding = _StageHandler({PostWorkflowSection.BRIEF: {"goal": "bookings"}})
-    contract = _StageHandler(
-        {PostWorkflowSection.SEMANTIC_CONTRACT: _semantic_contract()}
-    )
+    contract = _StageHandler({PostWorkflowSection.SEMANTIC_CONTRACT: _semantic_contract()})
     executor = PostSupervisorExecutor(
         store=store,
         supervisor=PostSupervisor(_small_plan()),

@@ -122,12 +122,8 @@ async def test_generation_request_is_idempotent_and_exposes_job(
     post_id = post_response.json()["id"]
     request_headers = {**headers, "Idempotency-Key": "client-request-42"}
 
-    first = await job_client.post(
-        f"/api/posts/{post_id}/generations", headers=request_headers
-    )
-    second = await job_client.post(
-        f"/api/posts/{post_id}/generations", headers=request_headers
-    )
+    first = await job_client.post(f"/api/posts/{post_id}/generations", headers=request_headers)
+    second = await job_client.post(f"/api/posts/{post_id}/generations", headers=request_headers)
 
     assert first.status_code == 201
     assert second.status_code == 201

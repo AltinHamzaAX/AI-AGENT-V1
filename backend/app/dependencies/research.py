@@ -22,6 +22,9 @@ def create_external_research_stage_handler(
         cache=RedisResearchCache(redis_client),
         cache_ttl_seconds=configured.research_cache_ttl_seconds,
         max_concurrency=configured.research_max_concurrency,
+        search_timeout_seconds=configured.research_search_timeout_seconds,
+        tool_timeout_seconds=configured.research_tool_timeout_seconds,
+        stage_timeout_seconds=configured.research_stage_timeout_seconds,
         trace_recorder=trace_recorder,
     )
 

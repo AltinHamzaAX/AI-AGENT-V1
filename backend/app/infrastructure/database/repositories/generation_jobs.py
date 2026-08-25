@@ -161,9 +161,7 @@ class SQLAlchemyGenerationJobRepository:
                 generation.updated_at = now
         else:
             model.status = (
-                GenerationJobStatus.DEAD.value
-                if retryable
-                else GenerationJobStatus.FAILED.value
+                GenerationJobStatus.DEAD.value if retryable else GenerationJobStatus.FAILED.value
             )
             if generation is not None:
                 generation.status = GenerationStatus.FAILED.value

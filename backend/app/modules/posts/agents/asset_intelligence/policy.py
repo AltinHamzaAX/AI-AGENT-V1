@@ -46,8 +46,10 @@ def evaluate_asset_usage(
             violations.append(f"asset '{asset_id}' cannot be cropped")
         if assertion.used and assertion.dominance is None:
             violations.append(f"asset '{asset_id}' is missing a dominance measurement")
-        if assertion.used and assertion.dominance is not None and not (
-            policy.min_dominance <= assertion.dominance <= policy.max_dominance
+        if (
+            assertion.used
+            and assertion.dominance is not None
+            and not (policy.min_dominance <= assertion.dominance <= policy.max_dominance)
         ):
             violations.append(
                 f"asset '{asset_id}' dominance must be between "

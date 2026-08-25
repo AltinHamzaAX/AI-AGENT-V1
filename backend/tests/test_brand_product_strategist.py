@@ -114,9 +114,7 @@ def _response(**overrides) -> str:
 
 def _context(contract: PostSemanticContract | None = None) -> SupervisorStageContext:
     state = empty_workflow_state()
-    state[PostWorkflowSection.SEMANTIC_CONTRACT.value] = (
-        contract or _contract()
-    ).to_dict()
+    state[PostWorkflowSection.SEMANTIC_CONTRACT.value] = (contract or _contract()).to_dict()
     return SupervisorStageContext(
         generation_id=uuid4(),
         post_id=uuid4(),
@@ -262,9 +260,7 @@ async def test_provider_cannot_replace_product_or_add_strategy_fields() -> None:
 @pytest.mark.asyncio
 async def test_brand_product_requires_a_valid_semantic_contract() -> None:
     context = _context()
-    context.workflow_state[PostWorkflowSection.SEMANTIC_CONTRACT.value][
-        "fingerprint"
-    ] = "0" * 64
+    context.workflow_state[PostWorkflowSection.SEMANTIC_CONTRACT.value]["fingerprint"] = "0" * 64
     llm = _SequenceLLM(_response())
 
     with pytest.raises(ValueError, match="fingerprint"):

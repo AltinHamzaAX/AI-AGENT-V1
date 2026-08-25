@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from uuid import uuid4
@@ -10,7 +11,6 @@ from app.infrastructure.cache.research import RedisResearchCache
 from app.integrations.mock import (
     MockEmbeddingProvider,
     MockImageProvider,
-    MockLLMProvider,
     MockStorageProvider,
     MockVisionProvider,
 )
@@ -26,6 +26,8 @@ from app.modules.posts.domain.supervisor import (
 from app.modules.posts.orchestration import ExternalResearchStageHandler
 from app.modules.posts.orchestration.supervisor import SupervisorStageContext
 from app.modules.posts.providers import (
+    LLMRequest,
+    LLMResponse,
     ProviderBundle,
     ResearchRequest,
     ResearchResponse,
@@ -83,6 +85,53 @@ class _ResearchProvider:
             )
         finally:
             self.active -= 1
+
+
+class _StructuredResearchLLM:
+    def __init__(self) -> None:
+        self.requests: list[LLMRequest] = []
+
+    async def complete(self, request: LLMRequest) -> LLMResponse:
+        self.requests.append(request)
+        prompt = request.messages[0].content
+        source = json.loads(request.messages[-1].content)["sources"][0]
+        insight = {
+            "observation": "Observed pattern from evidence.",
+            "evidence": [{"source_id": "S1", "quote": source["excerpt"]}],
+        }
+        if "overused_patterns" in prompt:
+            payload = {
+                "messaging": [insight],
+                "offers": [],
+                "cta": [],
+                "visual_language": [],
+                "differentiation": [],
+                "overused_patterns": [],
+            }
+        elif "platform_creative_patterns" in prompt:
+            payload = {
+                "platform_creative_patterns": [insight],
+                "text_density": [],
+                "cta": [],
+                "logo_placement": [],
+                "photography": [],
+                "graphic_systems": [],
+                "compositions": [],
+            }
+        else:
+            payload = {
+                "category": [insight],
+                "market_expectations": [],
+                "offers": [],
+                "customer_expectations": [],
+                "positioning_patterns": [],
+                "opportunities": [],
+            }
+        return LLMResponse(
+            text=json.dumps(payload),
+            provider="test-llm",
+            model="structured-research-test",
+        )
 
 
 class _BrokenCache:
@@ -192,9 +241,9 @@ def _payload() -> ExternalResearchInput:
     )
 
 
-def _providers(research) -> ProviderBundle:
+def _providers(research, llm=None) -> ProviderBundle:
     return ProviderBundle(
-        llm=MockLLMProvider(),
+        llm=llm or _StructuredResearchLLM(),
         vision=MockVisionProvider(),
         image=MockImageProvider(),
         embedding=MockEmbeddingProvider(),
@@ -240,7 +289,7 @@ async def test_external_research_runs_all_tools_concurrently_and_is_source_aware
 
     result = await service.run(_payload())
 
-    assert len(provider.requests) == 8
+    assert len(provider.requests) == 24
     assert 2 <= provider.max_active <= 4
     assert result.contract_fingerprint == _contract().fingerprint
     assert result.researched_at == now
@@ -250,11 +299,22 @@ async def test_external_research_runs_all_tools_concurrently_and_is_source_aware
     assert all(report.researched_at == now for report in reports)
     assert all(report.expires_at == now + timedelta(seconds=600) for report in reports)
     assert all(report.cached is False for report in reports)
-    assert all(len(report.sources) == 1 for report in reports)
-    assert all(len(report.findings) == 1 for report in reports)
+    assert len(result.market.sources) == 6
+    assert len(result.competitor.sources) == 6
+    assert len(result.social.sources) == 7
     assert all(
-        str(report.findings[0].source_url) == str(report.sources[0].url)
-        for report in reports
+        len(getattr(result, category.value).sources) == 1
+        for category in ResearchCategory
+        if category
+        not in {
+            ResearchCategory.MARKET,
+            ResearchCategory.COMPETITOR,
+            ResearchCategory.SOCIAL,
+        }
+    )
+    assert all(len(report.findings) == len(report.sources) for report in reports)
+    assert all(
+        str(report.findings[0].source_url) == str(report.sources[0].url) for report in reports
     )
     serialized = result.model_dump(mode="json")
     assert "marketing_strategy" not in serialized
@@ -266,10 +326,11 @@ async def test_external_research_runs_all_tools_concurrently_and_is_source_aware
 @pytest.mark.asyncio
 async def test_second_run_is_fully_cached_and_expiry_researches_again() -> None:
     provider = _ResearchProvider()
+    llm = _StructuredResearchLLM()
     current = [datetime(2026, 8, 25, 8, tzinfo=UTC)]
     cache = InMemoryResearchCache(clock=lambda: current[0])
     service = ExternalResearchService(
-        default_research_tools(provider),
+        default_research_tools(provider, llm),
         cache=cache,
         cache_ttl_seconds=60,
         clock=lambda: current[0],
@@ -277,13 +338,15 @@ async def test_second_run_is_fully_cached_and_expiry_researches_again() -> None:
 
     first = await service.run(_payload())
     second = await service.run(_payload())
-    assert len(provider.requests) == 8
+    assert len(provider.requests) == 24
+    assert len(llm.requests) == 3
     assert all(getattr(second, category.value).cached for category in ResearchCategory)
     assert all(not getattr(first, category.value).cached for category in ResearchCategory)
 
     current[0] += timedelta(seconds=61)
     third = await service.run(_payload())
-    assert len(provider.requests) == 16
+    assert len(provider.requests) == 48
+    assert len(llm.requests) == 6
     assert all(not getattr(third, category.value).cached for category in ResearchCategory)
 
 
@@ -304,7 +367,7 @@ async def test_cache_failure_does_not_discard_successful_research() -> None:
         default_research_tools(provider), cache=_BrokenCache()
     ).run(_payload())
     assert result.market.status is ResearchStatus.SUCCEEDED
-    assert len(provider.requests) == 8
+    assert len(provider.requests) == 24
 
 
 @pytest.mark.asyncio
@@ -327,6 +390,9 @@ async def test_stage_writes_exactly_the_research_section() -> None:
     value = result.outputs[PostWorkflowSection.RESEARCH]
     assert value["contract_fingerprint"] == _contract().fingerprint
     assert value["market"]["sources"][0]["url"].startswith("https://")
+    assert value["market"]["analysis"]["category"]
+    assert value["competitor"]["analysis"]["safe_use"] == "differentiate_do_not_copy"
+    assert value["social"]["analysis"]["platform_creative_patterns"]
 
 
 @pytest.mark.asyncio
@@ -342,7 +408,10 @@ async def test_stage_rejects_missing_audience_before_provider() -> None:
 @pytest.mark.asyncio
 async def test_redis_cache_adapter_round_trips_typed_report() -> None:
     provider = _ResearchProvider()
-    result = await ExternalResearchService.from_provider(provider).run(_payload())
+    result = await ExternalResearchService.from_providers(
+        provider,
+        _StructuredResearchLLM(),
+    ).run(_payload())
     redis = _FakeRedis()
     cache = RedisResearchCache(redis)  # type: ignore[arg-type]
     report = result.market
@@ -351,6 +420,7 @@ async def test_redis_cache_adapter_round_trips_typed_report() -> None:
     loaded = await cache.get(report.cache_key)
 
     assert loaded == report
+    assert loaded is not None and loaded.analysis is not None
     redis_key = f"posts:research:v1:{report.cache_key}"
     assert redis.ttls[redis_key] == 321
 

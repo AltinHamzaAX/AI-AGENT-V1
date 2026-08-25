@@ -271,9 +271,7 @@ def _build_brief(
     if values["goal"] is None and _has_marker(values["cta_intent"], _GOAL_MARKERS):
         values["goal"] = values["cta_intent"]
         values["cta_intent"] = None
-    elif values["cta_intent"] is not None and not _has_marker(
-        values["cta_intent"], _CTA_MARKERS
-    ):
+    elif values["cta_intent"] is not None and not _has_marker(values["cta_intent"], _CTA_MARKERS):
         values["cta_intent"] = None
 
     values["platform"] = values["platform"] or _extract_platform(source)
@@ -282,8 +280,7 @@ def _build_brief(
     values["business"] = values["business"] or _extract_business_type(source)
     extracted_goal = _extract_goal(source)
     if extracted_goal is not None and (
-        values["goal"] is None
-        or _normalize_text(extracted_goal) in _normalize_text(values["goal"])
+        values["goal"] is None or _normalize_text(extracted_goal) in _normalize_text(values["goal"])
     ):
         values["goal"] = extracted_goal
     values["cta_intent"] = values["cta_intent"] or _extract_cta(source)
@@ -355,10 +352,7 @@ def _grounded_optional(
     if normalized is None:
         return None
     normalized_value = _normalize_text(normalized)
-    if any(
-        normalized_value in _normalize_text(message)
-        for message in _client_messages(source)
-    ):
+    if any(normalized_value in _normalize_text(message) for message in _client_messages(source)):
         return normalized
     if (
         isinstance(evidence, str)
@@ -414,9 +408,7 @@ def _normalize_text(value: str) -> str:
 def _has_marker(value: Any, markers: frozenset[str]) -> bool:
     if not isinstance(value, str):
         return False
-    tokens = {
-        token.strip(".,!?;:()[]{}\"'") for token in _normalize_text(value).split()
-    }
+    tokens = {token.strip(".,!?;:()[]{}\"'") for token in _normalize_text(value).split()}
     return bool(tokens & markers)
 
 

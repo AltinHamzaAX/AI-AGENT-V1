@@ -104,9 +104,7 @@ class SupervisorPlan:
         while changed:
             changed = False
             for policy in self._stages:
-                if policy.stage not in affected and affected.intersection(
-                    policy.dependencies
-                ):
+                if policy.stage not in affected and affected.intersection(policy.dependencies):
                     affected.add(policy.stage)
                     changed = True
         return tuple(policy.stage for policy in self._stages if policy.stage in affected)
@@ -338,9 +336,7 @@ class PostSupervisor:
             if unavailable:
                 return unavailable
             return SupervisorDecision(
-                action=(
-                    SupervisorAction.RETRY if stage_attempts else SupervisorAction.CONTINUE
-                ),
+                action=(SupervisorAction.RETRY if stage_attempts else SupervisorAction.CONTINUE),
                 next_stage=policy.stage,
                 reason=(
                     "retrying incomplete stage after a recoverable failure"
@@ -383,9 +379,7 @@ class PostSupervisor:
         if decision.next_stage is not None:
             stage_name = decision.next_stage.value
             if decision.action is SupervisorAction.SKIP:
-                progress["skipped_stages"] = _append_unique(
-                    progress["skipped_stages"], stage_name
-                )
+                progress["skipped_stages"] = _append_unique(progress["skipped_stages"], stage_name)
                 progress["current_stage"] = None
             elif decision.action in {
                 SupervisorAction.CONTINUE,
@@ -393,23 +387,15 @@ class PostSupervisor:
                 SupervisorAction.REVISE,
             }:
                 if decision.action is SupervisorAction.REVISE:
-                    affected = {
-                        stage.value
-                        for stage in self._plan.downstream(decision.next_stage)
-                    }
+                    affected = {stage.value for stage in self._plan.downstream(decision.next_stage)}
                     progress["invalidated_stages"] = [
-                        stage.value
-                        for stage in self._plan.downstream(decision.next_stage)
+                        stage.value for stage in self._plan.downstream(decision.next_stage)
                     ]
                     progress["completed_stages"] = [
-                        stage
-                        for stage in progress["completed_stages"]
-                        if stage not in affected
+                        stage for stage in progress["completed_stages"] if stage not in affected
                     ]
                     progress["skipped_stages"] = [
-                        stage
-                        for stage in progress["skipped_stages"]
-                        if stage not in affected
+                        stage for stage in progress["skipped_stages"] if stage not in affected
                     ]
                 progress["current_stage"] = stage_name
                 progress["stage_attempts"][stage_name] = (
@@ -425,9 +411,7 @@ class PostSupervisor:
     ) -> dict[str, Any]:
         state = validate_workflow_state(workflow_state)
         progress = _progress(state)
-        progress["completed_stages"] = _append_unique(
-            progress["completed_stages"], stage.value
-        )
+        progress["completed_stages"] = _append_unique(progress["completed_stages"], stage.value)
         progress["invalidated_stages"] = [
             name for name in progress["invalidated_stages"] if name != stage.value
         ]
@@ -506,9 +490,7 @@ def _progress(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _outputs_present(
-    state: dict[str, Any], sections: tuple[PostWorkflowSection, ...]
-) -> bool:
+def _outputs_present(state: dict[str, Any], sections: tuple[PostWorkflowSection, ...]) -> bool:
     return bool(sections) and all(bool(state[section.value]) for section in sections)
 
 

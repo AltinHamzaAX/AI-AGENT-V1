@@ -104,9 +104,7 @@ class AssetIntelligenceAgent:
             raise TypeError("asset intelligence received an invalid input type")
         contract = _validated_contract(payload)
         if not payload.attachments:
-            return AssetIntelligenceResult(
-                assets=[], contract_fingerprint=contract.fingerprint
-            )
+            return AssetIntelligenceResult(assets=[], contract_fingerprint=contract.fingerprint)
 
         response = await self._llm.complete(
             LLMRequest(
@@ -122,9 +120,7 @@ class AssetIntelligenceAgent:
             )
         )
         try:
-            proposed = AssetIntelligenceLLMOutput.model_validate(
-                _parse_json_object(response.text)
-            )
+            proposed = AssetIntelligenceLLMOutput.model_validate(_parse_json_object(response.text))
             policies = _build_policies(payload, contract, proposed.classifications)
         except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
             raise ProviderResponseError(
@@ -228,14 +224,16 @@ def _build_policies(
                 role=role,
                 required=required,
                 preserve_identity=preserve_identity,
-                allow_crop=role not in {
+                allow_crop=role
+                not in {
                     IntelligentAssetRole.BRAND_LOGO,
                     IntelligentAssetRole.STYLE_REFERENCE,
                     IntelligentAssetRole.INSPIRATION_ONLY,
                 },
                 allow_replace=not preserve_identity and not required,
-                allow_generation=not preserve_identity and not required and role
-                not in {IntelligentAssetRole.SUPPORTING_ASSET},
+                allow_generation=not preserve_identity
+                and not required
+                and role not in {IntelligentAssetRole.SUPPORTING_ASSET},
                 min_dominance=minimum,
                 max_dominance=maximum,
                 user_intent_evidence=evidence,

@@ -41,19 +41,10 @@ def test_engine_asks_only_for_critical_missing_information() -> None:
         UnderstandingField.GOAL,
     ]
     assert classifications[UnderstandingField.BUSINESS] is MissingInformationClass.OPTIONAL
-    assert (
-        classifications[UnderstandingField.PRODUCT_SERVICE]
-        is MissingInformationClass.CRITICAL
-    )
+    assert classifications[UnderstandingField.PRODUCT_SERVICE] is MissingInformationClass.CRITICAL
     assert classifications[UnderstandingField.GOAL] is MissingInformationClass.CRITICAL
-    assert (
-        classifications[UnderstandingField.AUDIENCE]
-        is MissingInformationClass.RESEARCHABLE
-    )
-    assert (
-        classifications[UnderstandingField.PLATFORM]
-        is MissingInformationClass.INFERABLE
-    )
+    assert classifications[UnderstandingField.AUDIENCE] is MissingInformationClass.RESEARCHABLE
+    assert classifications[UnderstandingField.PLATFORM] is MissingInformationClass.INFERABLE
     assert classifications[UnderstandingField.OFFER] is MissingInformationClass.OPTIONAL
     assert all("?" in question.question for question in plan.questions)
 
