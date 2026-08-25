@@ -42,6 +42,7 @@ def _context(**overrides) -> ResearchContext:
         "location": "Prishtina airport",
         "platform": "Instagram",
         "language": "Albanian",
+        "objective": "Increase airport pickup bookings",
         "required_facts": {},
         "contract_fingerprint": "a" * 64,
     }

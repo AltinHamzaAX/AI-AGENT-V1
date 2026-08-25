@@ -35,6 +35,7 @@ from app.modules.posts.tools.research import (
     ResearchContext,
     SocialResearchTool,
     TrendResearchTool,
+    VisualReferenceTool,
     default_research_tools,
     locality_cache_key,
     research_cache_key,
@@ -61,6 +62,7 @@ def _context(**overrides) -> ResearchContext:
         "location": "Prishtina airport",
         "platform": "Instagram",
         "language": "Albanian",
+        "objective": "Increase airport pickup bookings",
         "required_facts": {"pickup": "24/7"},
         "contract_fingerprint": "a" * 64,
     }
@@ -97,7 +99,15 @@ class _BodyProvider:
 
 
 @pytest.mark.parametrize(
-    "tool_type", [MarketResearchTool, CompetitorResearchTool, SocialResearchTool]
+    "tool_type",
+    [
+        MarketResearchTool,
+        CompetitorResearchTool,
+        SocialResearchTool,
+        VisualReferenceTool,
+        TrendResearchTool,
+        PlatformResearchTool,
+    ],
 )
 async def test_structured_tools_ask_for_the_page_body(tool_type) -> None:
     provider = _BodyProvider()
@@ -105,7 +115,7 @@ async def test_structured_tools_ask_for_the_page_body(tool_type) -> None:
     assert all(request.include_raw_content is True for request in provider.requests)
 
 
-@pytest.mark.parametrize("tool_type", [AudienceResearchTool, TrendResearchTool])
+@pytest.mark.parametrize("tool_type", [AudienceResearchTool])
 async def test_snippet_only_tools_do_not_pay_for_page_bodies(tool_type) -> None:
     provider = _BodyProvider()
     await tool_type(provider).research(_context(), researched_at=NOW, ttl_seconds=600)

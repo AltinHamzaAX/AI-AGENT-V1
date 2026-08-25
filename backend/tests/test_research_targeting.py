@@ -25,12 +25,14 @@ from app.modules.posts.tools.research import (
     LLMResearchAnalyzer,
     MarketResearchTool,
     PlatformResearchTool,
+    ResearchCategory,
     ResearchConfidence,
     ResearchContext,
     SocialResearchTool,
     TrendResearchTool,
     VisualReferenceTool,
     platform_domains,
+    research_cache_key,
     resolve_country,
 )
 
@@ -58,6 +60,7 @@ def _context(**overrides) -> ResearchContext:
         "location": "Prishtina airport",
         "platform": "Instagram",
         "language": "Albanian",
+        "objective": "Increase airport pickup bookings",
         "required_facts": {"pickup": "24/7"},
         "contract_fingerprint": "a" * 64,
     }
@@ -216,9 +219,13 @@ async def test_trend_tool_buys_recency_and_drops_geo_targeting() -> None:
     )
 
     request = provider.requests[0]
-    assert request.topic == "news"
-    assert request.time_range == "year"
-    # The provider ignores country on the news index; sending it would be a lie.
+    # Recency is ranked by freshness_score, not filtered for. Measured live,
+    # filtering trends to news within a year returned one usable source in
+    # five where the general index returned five.
+    assert request.topic == "general"
+    assert request.time_range is None
+    # A trend is rarely local, and this engine judges market relevance itself
+    # through brand, audience and objective fit.
     assert request.country is None
 
 
@@ -268,10 +275,16 @@ def test_cache_variant_separates_differently_shaped_requests() -> None:
     trend = TrendResearchTool(provider).cache_variant
     excluded = MarketResearchTool(provider, exclude_domains=("spam.example",)).cache_variant
 
-    assert market != trend
-    assert market != excluded
-    assert "news" in trend
-    assert "year" in trend
+    analyzed = MarketResearchTool(provider, analyzer=object()).cache_variant
+
+    assert market != excluded, "a different domain filter is a different request"
+    assert market != analyzed, "a raw report must never be served as an analyzed one"
+    # Market and trend now shape their requests identically, which is safe
+    # because the category is part of the cache key itself.
+    assert market == trend
+    assert research_cache_key(
+        category=ResearchCategory.MARKET, query="q", locality="l", variant=market
+    ) != research_cache_key(category=ResearchCategory.TREND, query="q", locality="l", variant=trend)
 
 
 # --------------------------------------------------------------------------

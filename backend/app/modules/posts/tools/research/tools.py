@@ -39,7 +39,7 @@ ResearchGate = asyncio.Semaphore
 
 #: Cache namespace for research reports. Bump on any change to request shaping
 #: or report structure so previously cached reports are not served.
-RESEARCH_CACHE_SCHEMA = "research:v5"
+RESEARCH_CACHE_SCHEMA = "research:v6"
 
 
 class BaseResearchTool(ABC):
@@ -241,9 +241,17 @@ class StructuredResearchTool(BaseResearchTool):
     ) -> ResearchReport:
         canonical_query = normalize_research_query(self.build_query(context))
         dimension_queries = self.build_dimension_queries(context)
+        # Dimensions stay separate on the report, because provenance is what
+        # decides whether an insight has earned high confidence. Their queries
+        # do not have to: fourteen visual attributes are answered by four kinds
+        # of page, and asking the same question fourteen times would buy the
+        # same results at fourteen times the cost. Dimensions that declare an
+        # identical query share one search and are all credited with it.
+        queries: dict[str, list[str]] = {}
+        for dimension, raw_query in dimension_queries.items():
+            queries.setdefault(normalize_research_query(raw_query), []).append(dimension)
 
-        async def search(dimension: str, raw_query: str):
-            query = normalize_research_query(raw_query)
+        async def search(query: str):
             return await self._search(
                 self.build_request(
                     context,
@@ -253,74 +261,107 @@ class StructuredResearchTool(BaseResearchTool):
                 gate=gate,
             )
 
-        # Dimensions are independent searches; running them one after another
-        # made this tool the critical path of the whole research stage.
+        # Searches are independent; running them one after another made this
+        # tool the critical path of the whole research stage.
         responses = await asyncio.gather(
-            *(search(dimension, query) for dimension, query in dimension_queries.items()),
+            *(search(query) for query in queries),
             return_exceptions=True,
         )
 
         sources_by_url: dict[str, ResearchSource] = {}
+        images: list[ResearchImage] = []
         providers: set[str] = set()
         summaries: list[str] = []
         degraded: list[str] = []
         failures: list[BaseException] = []
         # gather preserves input order, so merging stays deterministic.
-        for dimension, response in zip(dimension_queries, responses, strict=True):
+        for dimensions, response in zip(queries.values(), responses, strict=True):
             if isinstance(response, BaseException):
-                # One dimension failing loses that angle, not the category.
+                # One search failing loses the angles that asked for it, not
+                # the category.
                 logger.warning(
                     "posts.research.dimension_failed",
                     extra={
                         "category": self.category.value,
-                        "dimension": dimension,
+                        "dimension": ",".join(dimensions),
                         "error": type(response).__name__,
                     },
                 )
-                degraded.append(dimension)
+                degraded.extend(dimensions)
                 failures.append(response)
                 continue
             providers.add(response.provider)
+            # Every dimension searches separately, so images arrive in several
+            # responses. _visual_references de-duplicates and bounds them once,
+            # after the whole set is in.
+            images.extend(response.images)
             if isinstance(response.answer, str) and response.answer.strip():
                 summary = " ".join(response.answer.split())
                 if summary not in summaries:
                     summaries.append(summary)
             for result in response.results:
-                source = source_from_result(
-                    result,
-                    dimension=dimension,
-                    context=context,
-                    researched_at=researched_at,
-                )
-                if source is None:
-                    continue
-                key = str(source.url)
-                existing = sources_by_url.get(key)
-                sources_by_url[key] = (
-                    merge_source(existing, source) if existing is not None else source
-                )
-        if len(degraded) == len(dimension_queries):
+                for dimension in dimensions:
+                    source = source_from_result(
+                        result,
+                        dimension=dimension,
+                        context=context,
+                        researched_at=researched_at,
+                    )
+                    if source is None:
+                        continue
+                    key = str(source.url)
+                    existing = sources_by_url.get(key)
+                    sources_by_url[key] = (
+                        merge_source(existing, source) if existing is not None else source
+                    )
+        if len(degraded) == len(dimension_queries):  # every search failed
             # Keep the reason rather than flattening it: a spent allowance is
             # not a defect to investigate, and the metrics rely on the type.
             if any(isinstance(failure, ProviderQuotaError) for failure in failures):
                 raise ProviderQuotaError(
                     f"{self.category.value} research stopped: provider allowance is exhausted"
                 )
+            # Same argument, one step further. A hang and a rate limit are
+            # different operational facts that the stage metrics count in
+            # different buckets, and a category running several searches must
+            # not lose that distinction just because it lost all of them.
+            # Provider-domain failures are re-raised as they are; anything
+            # else is a defect here rather than a fact about the provider, and
+            # is not allowed to leak its own type into a report.
+            signal = next(
+                (
+                    failure
+                    for failure in failures
+                    if isinstance(failure, ProviderError | TimeoutError)
+                ),
+                None,
+            )
+            if signal is not None:
+                raise signal
             raise ProviderError(f"every {self.category.value} research dimension failed")
         sources = sorted(
             sources_by_url.values(),
             key=lambda source: source.quality_score,
             reverse=True,
         )[:20]
+        visual_references = _visual_references(tuple(images), researched_at=researched_at)
         report = ResearchReport(
             category=self.category,
-            status=(ResearchStatus.SUCCEEDED if sources else ResearchStatus.NO_RESULTS),
+            # An image is evidence on its own. Visual reference can succeed on
+            # references alone, exactly as it did before this tool analyzed
+            # anything, so status cannot depend on text sources only.
+            status=(
+                ResearchStatus.SUCCEEDED
+                if (sources or visual_references)
+                else ResearchStatus.NO_RESULTS
+            ),
             query=canonical_query,
             provider=", ".join(sorted(providers)) or "research_provider",
             provider_summary=" ".join(summaries)[:8_000] or None,
             confidence=_report_confidence(sources),
             findings=_findings(sources),
             sources=sources,
+            visual_references=visual_references,
             researched_at=researched_at,
             expires_at=researched_at + timedelta(seconds=ttl_seconds),
             cache_key=research_cache_key(
@@ -332,7 +373,9 @@ class StructuredResearchTool(BaseResearchTool):
             cached=False,
             degraded_dimensions=degraded,
         )
-        if self._analyzer is None or report.status is ResearchStatus.NO_RESULTS:
+        # Analysis grounds quotes in text sources. References without a single
+        # source are a real result and are returned as they are.
+        if self._analyzer is None or not report.sources:
             return report
         return await self._analyzer.analyze(report=report, context=context)
 
@@ -441,7 +484,7 @@ class SocialResearchTool(StructuredResearchTool):
         }
 
 
-class VisualReferenceTool(BaseResearchTool):
+class VisualReferenceTool(StructuredResearchTool):
     category = ResearchCategory.VISUAL_REFERENCE
 
     # Without this the tool could only ever find pages *about* visuals, never a
@@ -454,16 +497,52 @@ class VisualReferenceTool(BaseResearchTool):
             f"in {context.market or 'the target market'} {context.platform}"
         )
 
+    def build_dimension_queries(self, context: ResearchContext) -> dict[str, str]:
+        subject = context.primary_entity
+        platform = context.platform
+        place = context.market or context.location or "target market"
+        base = f"{subject} {platform} {place} advertising creative"
+        # Grouped by the kind of page that answers them, not by attribute. A
+        # page showing layout shows framing, crop and headline position in the
+        # same breath, so these four questions are one search that all four
+        # dimensions are credited with.
+        layout = f"{base} image composition layout framing crop headline placement examples"
+        overlay = f"{base} text overlay typography call to action logo placement examples"
+        imagery = f"{base} photography lighting color palette texture style examples"
+        elements = f"{base} badges icons shapes graphic style mood examples"
+        return {
+            "composition": layout,
+            "subject_scale": layout,
+            "negative_space": layout,
+            "headline_region": layout,
+            "text_density": overlay,
+            "typography": overlay,
+            "cta": overlay,
+            "logo": overlay,
+            "photography": imagery,
+            "lighting": imagery,
+            "colors": imagery,
+            "texture": imagery,
+            "graphic_elements": elements,
+            "energy": elements,
+        }
 
-class TrendResearchTool(BaseResearchTool):
+
+class TrendResearchTool(StructuredResearchTool):
     category = ResearchCategory.TREND
 
-    # Recency is the whole point of trend evidence, so this tool filters on it
-    # rather than asking for "current" in prose and hoping the index agrees.
-    # The provider ignores country on the news index, so geo-targeting is off
-    # and the market stays in the query text instead.
-    topic = "news"
-    time_range = "year"
+    # Recency used to be a hard filter on the news index, and the filter
+    # starved the engine. Measured live against the same contract, the shipped
+    # query returned one usable source in five on news within a year and five
+    # in five on the general index; the query for overused patterns returned
+    # none at all on news. Marketing-trend writing lives in guides, reports and
+    # platform blogs rather than in the news wire. Recency is still paid for,
+    # through freshness_score ranking a fresher page above a stale one, which
+    # costs nothing when nothing recent exists.
+    #
+    # Geo-targeting stays off deliberately. A trend is rarely local, and this
+    # is the one engine that judges what it finds against the brief afterwards,
+    # so the market is applied by the fit gate rather than by the index.
     geo_targeted = False
 
     def build_query(self, context: ResearchContext) -> str:
@@ -472,8 +551,25 @@ class TrendResearchTool(BaseResearchTool):
             f"{context.market or context.location or ''}"
         )
 
+    def build_dimension_queries(self, context: ResearchContext) -> dict[str, str]:
+        subject = context.primary_entity
+        platform = context.platform
+        # Deliberately wider than the brief. Retrieval that names the exact
+        # entity and the exact town finds a rental company's contact page, not
+        # a trend; the three fits decide relevance once there is something to
+        # judge, and they cannot judge an empty result set.
+        return {
+            "current": f"{subject} marketing trends this year",
+            "emerging": f"{platform} content format trends brands adopting",
+            # Searched for on purpose. A trend feed reports what is rising and
+            # leaves out what is exhausted, which is the half a brief needs in
+            # order to avoid it.
+            "overused": f"{platform} overused advertising trends audiences dislike",
+            "declining": f"{subject} advertising trends losing engagement",
+        }
 
-class PlatformResearchTool(BaseResearchTool):
+
+class PlatformResearchTool(StructuredResearchTool):
     category = ResearchCategory.PLATFORM
 
     # Platform specifications are global, and the authoritative source is the
@@ -488,6 +584,19 @@ class PlatformResearchTool(BaseResearchTool):
 
     def include_domains(self, context: ResearchContext) -> tuple[str, ...]:
         return platform_domains(context.platform)
+
+    def build_dimension_queries(self, context: ResearchContext) -> dict[str, str]:
+        platform = context.platform
+        return {
+            "formats": (
+                f"official {platform} post formats aspect ratios image video "
+                f"resolution specifications"
+            ),
+            "constraints": (
+                f"official {platform} caption length limits video duration file size "
+                f"requirements for business posts"
+            ),
+        }
 
 
 class BrandProductResearchTool(BaseResearchTool):
@@ -512,9 +621,9 @@ def default_research_tools(
         CompetitorResearchTool(provider, analyzer=analyzer, **timeout),
         AudienceResearchTool(provider, **timeout),
         SocialResearchTool(provider, analyzer=analyzer, **timeout),
-        VisualReferenceTool(provider, **timeout),
-        TrendResearchTool(provider, **timeout),
-        PlatformResearchTool(provider, **timeout),
+        VisualReferenceTool(provider, analyzer=analyzer, **timeout),
+        TrendResearchTool(provider, analyzer=analyzer, **timeout),
+        PlatformResearchTool(provider, analyzer=analyzer, **timeout),
         BrandProductResearchTool(provider, **timeout),
     )
 

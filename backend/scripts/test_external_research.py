@@ -17,12 +17,13 @@ from app.core.config import get_settings  # noqa: E402
 from app.integrations.provider_factory import create_provider_bundle  # noqa: E402
 from app.modules.posts.agents.audience_research import AudienceIntelligence  # noqa: E402
 from app.modules.posts.domain.semantic_contract import PostSemanticContract  # noqa: E402
-from app.modules.posts.tools.research import (  # noqa: E402
+from app.modules.posts.tools.research import (
     ExternalResearchInput,
     ExternalResearchService,
     InMemoryResearchCache,
     InMemoryResearchMetricsSink,
     ResearchCategory,
+    VisualReferenceTool,  # noqa: E402
     default_research_tools,
     resolve_country,
     validate_external_research_input,
@@ -149,6 +150,12 @@ def _summary(result) -> dict:
     }
 
 
+#: The categories that now run a grounded analysis pass, not just a search.
+ANALYZED = ("market", "competitor", "social", "visual_reference", "trend", "platform")
+#: Trend lifecycle stages, in the order the engine reports them.
+TREND_STAGES = ("current", "emerging", "overused", "declining")
+
+
 def _check(label: str, ok: bool, detail: str = "") -> bool:
     status = "PASS" if ok else "FAIL"
     suffix = f" - {detail}" if detail else ""
@@ -227,14 +234,33 @@ async def _run() -> None:
         if getattr(first, category.value).error
     ]
 
+    _visual_plan = VisualReferenceTool(providers.research).build_dimension_queries(context)
+
     print("\nChecks")
     checks = [
         _check(
-            "market, competitor and social carry structured analysis",
+            "all six analyzed categories carry structured analysis",
+            all(getattr(first, name).analysis is not None for name in ANALYZED),
+            ", ".join(name for name in ANALYZED if getattr(first, name).analysis is None)
+            or "market, competitor, social, visual reference, trend, platform",
+        ),
+        _check(
+            "fourteen visual attributes cost four searches",
+            len(set(_visual_plan.values())) == 4 and len(_visual_plan) == 14,
+            f"{len(set(_visual_plan.values()))} searches for {len(_visual_plan)} dimensions",
+        ),
+        _check(
+            "every trend is judged for brand, audience and objective fit",
             all(
-                getattr(first, name).analysis is not None
-                for name in ("market", "competitor", "social")
+                insight.usable == (insight.brand_fit and insight.audience_fit)
+                and insight.usable == (insight.usable and insight.objective_fit)
+                for stage in TREND_STAGES
+                for insight in getattr(first.trend.analysis, stage, [])
             ),
+            f"{len(first.trend.analysis.usable)} usable of "
+            f"{sum(len(getattr(first.trend.analysis, stage)) for stage in TREND_STAGES)}"
+            if first.trend.analysis is not None
+            else "no trend analysis",
         ),
         _check(
             "no category failed",

@@ -309,6 +309,7 @@ def validate_external_research_input(
         location=contract.location,
         platform=contract.platform,
         language=contract.language,
+        objective=contract.goal,
         required_facts=dict(contract.required_facts),
         contract_fingerprint=contract.fingerprint,
     )

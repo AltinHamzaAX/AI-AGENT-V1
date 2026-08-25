@@ -48,6 +48,7 @@ def _context() -> ResearchContext:
         location="Prishtina airport",
         platform="Instagram",
         language="Albanian",
+        objective="Increase airport pickup bookings",
         required_facts={"pickup": "24/7"},
         contract_fingerprint="a" * 64,
     )

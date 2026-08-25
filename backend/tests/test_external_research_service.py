@@ -118,6 +118,37 @@ class _StructuredResearchLLM:
                 "graphic_systems": [],
                 "compositions": [],
             }
+        elif "negative_space" in prompt:
+            payload = {
+                dimension: []
+                for dimension in (
+                    "composition",
+                    "subject_scale",
+                    "negative_space",
+                    "text_density",
+                    "headline_region",
+                    "typography",
+                    "photography",
+                    "lighting",
+                    "colors",
+                    "cta",
+                    "logo",
+                    "graphic_elements",
+                    "energy",
+                    "texture",
+                )
+            }
+            payload["composition"] = [insight]
+        elif "objective_fit" in prompt:
+            fitting = dict(insight, brand_fit=True, audience_fit=True, objective_fit=True)
+            payload = {
+                "current": [fitting],
+                "emerging": [],
+                "overused": [],
+                "declining": [],
+            }
+        elif '"formats"' in prompt:
+            payload = {"formats": [insight], "constraints": []}
         else:
             payload = {
                 "category": [insight],
@@ -289,7 +320,7 @@ async def test_external_research_runs_all_tools_concurrently_and_is_source_aware
 
     result = await service.run(_payload())
 
-    assert len(provider.requests) == 24
+    assert len(provider.requests) == 31
     assert 2 <= provider.max_active <= 4
     assert result.contract_fingerprint == _contract().fingerprint
     assert result.researched_at == now
@@ -302,16 +333,12 @@ async def test_external_research_runs_all_tools_concurrently_and_is_source_aware
     assert len(result.market.sources) == 6
     assert len(result.competitor.sources) == 6
     assert len(result.social.sources) == 7
-    assert all(
-        len(getattr(result, category.value).sources) == 1
-        for category in ResearchCategory
-        if category
-        not in {
-            ResearchCategory.MARKET,
-            ResearchCategory.COMPETITOR,
-            ResearchCategory.SOCIAL,
-        }
-    )
+    # One source per distinct query, so the count is the tool's query plan.
+    assert len(result.visual_reference.sources) == 4
+    assert len(result.trend.sources) == 4
+    assert len(result.platform.sources) == 2
+    assert len(result.audience.sources) == 1
+    assert len(result.brand_product.sources) == 1
     assert all(len(report.findings) == len(report.sources) for report in reports)
     assert all(
         str(report.findings[0].source_url) == str(report.sources[0].url) for report in reports
@@ -338,15 +365,15 @@ async def test_second_run_is_fully_cached_and_expiry_researches_again() -> None:
 
     first = await service.run(_payload())
     second = await service.run(_payload())
-    assert len(provider.requests) == 24
-    assert len(llm.requests) == 3
+    assert len(provider.requests) == 31
+    assert len(llm.requests) == 6
     assert all(getattr(second, category.value).cached for category in ResearchCategory)
     assert all(not getattr(first, category.value).cached for category in ResearchCategory)
 
     current[0] += timedelta(seconds=61)
     third = await service.run(_payload())
-    assert len(provider.requests) == 48
-    assert len(llm.requests) == 6
+    assert len(provider.requests) == 62
+    assert len(llm.requests) == 12
     assert all(not getattr(third, category.value).cached for category in ResearchCategory)
 
 
@@ -367,7 +394,7 @@ async def test_cache_failure_does_not_discard_successful_research() -> None:
         default_research_tools(provider), cache=_BrokenCache()
     ).run(_payload())
     assert result.market.status is ResearchStatus.SUCCEEDED
-    assert len(provider.requests) == 24
+    assert len(provider.requests) == 31
 
 
 @pytest.mark.asyncio

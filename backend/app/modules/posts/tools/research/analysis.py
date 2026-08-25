@@ -19,6 +19,8 @@ from .schemas import (
     EvidenceCoverage,
     EvidenceCoverageStatus,
     MarketResearchAnalysis,
+    PlatformAnalysis,
+    ResearchAnalysis,
     ResearchCategory,
     ResearchConfidence,
     ResearchContext,
@@ -27,6 +29,9 @@ from .schemas import (
     ResearchReport,
     ResearchSource,
     SocialResearchAnalysis,
+    TrendAnalysis,
+    TrendInsight,
+    VisualReferenceAnalysis,
     comparable_text,
     source_evidence_text,
 )
@@ -64,7 +69,18 @@ class _InsightDraft(BaseModel):
     model_config = _DRAFT_CONFIG
 
     observation: str = Field(min_length=1, max_length=2_000)
-    evidence: list[_EvidenceDraft] = Field(min_length=1, max_length=10)
+    #: Deliberately allowed to be empty, and empty is still unusable. Pydantic
+    #: rejects the whole response when one item fails, so requiring a citation
+    #: here meant a model that answered fourteen dimensions and forgot to cite
+    #: three of them lost all fourteen. An uncited insight is dropped during
+    #: grounding instead, where it costs only itself.
+    evidence: list[_EvidenceDraft] = Field(default_factory=list, max_length=10)
+
+
+class _TrendInsightDraft(_InsightDraft):
+    brand_fit: bool
+    audience_fit: bool
+    objective_fit: bool
 
 
 class _MarketAnalysisDraft(BaseModel):
@@ -107,10 +123,50 @@ class _SocialAnalysisDraft(BaseModel):
     compositions: list[_InsightDraft] = Field(default_factory=list, max_length=10)
 
 
+class _VisualReferenceAnalysisDraft(BaseModel):
+    model_config = _DRAFT_CONFIG
+
+    composition: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    subject_scale: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    negative_space: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    text_density: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    headline_region: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    typography: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    photography: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    lighting: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    colors: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    cta: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    logo: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    graphic_elements: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    energy: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    texture: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+
+
+class _TrendAnalysisDraft(BaseModel):
+    model_config = _DRAFT_CONFIG
+
+    current: list[_TrendInsightDraft] = Field(default_factory=list, max_length=10)
+    emerging: list[_TrendInsightDraft] = Field(default_factory=list, max_length=10)
+    overused: list[_TrendInsightDraft] = Field(default_factory=list, max_length=10)
+    declining: list[_TrendInsightDraft] = Field(default_factory=list, max_length=10)
+    # usable is deliberately absent, for the same reason safe_use is: it is
+    # ours to compute from the three fits, not a field a model may assert.
+
+
+class _PlatformAnalysisDraft(BaseModel):
+    model_config = _DRAFT_CONFIG
+
+    formats: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+    constraints: list[_InsightDraft] = Field(default_factory=list, max_length=10)
+
+
 _DRAFT_TYPES = {
     ResearchCategory.MARKET: _MarketAnalysisDraft,
     ResearchCategory.COMPETITOR: _CompetitorAnalysisDraft,
     ResearchCategory.SOCIAL: _SocialAnalysisDraft,
+    ResearchCategory.VISUAL_REFERENCE: _VisualReferenceAnalysisDraft,
+    ResearchCategory.TREND: _TrendAnalysisDraft,
+    ResearchCategory.PLATFORM: _PlatformAnalysisDraft,
 }
 
 #: Shortest span that may be re-attributed to the source it is verbatim in when
@@ -144,6 +200,23 @@ _DIMENSION_OBSERVATION_MARKERS: dict[str, tuple[str, ...]] = {
     "photography": ("photo", "image", "photography", "product shot", "lifestyle"),
     "graphic_systems": ("graphic", "color", "typography", "template", "visual identity"),
     "compositions": ("composition", "layout", "focal", "grid", "foreground", "background"),
+    "composition": ("composition", "layout", "frame", "focal", "crop", "centre", "center"),
+    "subject_scale": ("scale", "close-up", "closeup", "crop", "fills", "wide", "size"),
+    "negative_space": ("negative space", "white space", "empty", "breathing", "margin", "clean"),
+    "headline_region": ("headline", "header", "title", "top", "upper", "banner"),
+    "typography": ("typography", "font", "typeface", "lettering", "weight", "type"),
+    "lighting": ("light", "shadow", "bright", "dark", "exposure", "daylight"),
+    "colors": ("color", "colour", "palette", "tone", "hue", "contrast"),
+    "logo": ("logo", "brand mark", "watermark", "corner", "header", "footer"),
+    "graphic_elements": ("graphic", "shape", "badge", "icon", "sticker", "frame", "overlay"),
+    "energy": ("energy", "dynamic", "calm", "motion", "pace", "mood", "static"),
+    "texture": ("texture", "grain", "surface", "matte", "gloss", "pattern", "finish"),
+    "current": ("current", "now", "today", "popular", "widely", "common"),
+    "emerging": ("emerging", "new", "rising", "growing", "early", "increasing"),
+    "overused": ("overused", "saturated", "everywhere", "repeat", "generic", "tired"),
+    "declining": ("declin", "fading", "waning", "less", "dropping", "falling"),
+    "formats": ("format", "aspect", "ratio", "resolution", "size", "pixel", "video", "image"),
+    "constraints": ("limit", "maximum", "minimum", "character", "duration", "second", "must"),
 }
 
 
@@ -221,7 +294,33 @@ def _system_prompt(category: ResearchCategory, draft_type: type[BaseModel]) -> s
             "Analyze platform creative patterns, text density, calls to action, logo "
             "placement, photography, graphic systems, and compositions."
         ),
+        ResearchCategory.VISUAL_REFERENCE: (
+            "Analyze composition, subject scale, negative space, text density, headline "
+            "region, typography, photography, lighting, colors, calls to action, logo, "
+            "graphic elements, energy, and texture in the creative that was found."
+        ),
+        ResearchCategory.TREND: (
+            "Analyze which trends are current, which are emerging, which are overused, and "
+            "which are declining."
+        ),
+        ResearchCategory.PLATFORM: (
+            "Analyze the formats the platform supports and the constraints it publishes."
+        ),
     }[category]
+    # Trend evidence is judged against this brief, not collected for its own
+    # sake, so the fit rules travel with the trend prompt only.
+    fit = (
+        (
+            " Judge every trend three times, independently: brand_fit is whether it suits this "
+            "company, brand and product; audience_fit is whether it suits this audience and "
+            "target segment; objective_fit is whether it serves the stated objective. Each is "
+            "true or false on its own merits. Report a trend you find even when all three are "
+            "false, because knowing a trend does not fit is evidence too. Never decide whether "
+            "the trend may be used: that follows from the three fits and is not yours to set."
+        )
+        if category is ResearchCategory.TREND
+        else ""
+    )
     schema = json.dumps(draft_type.model_json_schema(), ensure_ascii=False, sort_keys=True)
     return (
         "You are a source-grounded research analysis tool in a marketing-post workflow. "
@@ -246,7 +345,7 @@ def _system_prompt(category: ResearchCategory, draft_type: type[BaseModel]) -> s
         "dimension it belongs to, and preserving proper names and verified values. Sources "
         "in the local market language are first-class evidence, not lower quality. Return "
         "exactly one JSON "
-        f"object matching this schema and no prose or markdown: {schema}"
+        f"object matching this schema and no prose or markdown: {schema}{fit}"
     )
 
 
@@ -265,6 +364,7 @@ def _analysis_input(
             "market": context.market,
             "location": context.location,
             "platform": context.platform,
+            "objective": context.objective,
         },
         "sources": [
             {
@@ -290,10 +390,7 @@ def _ground_analysis(
     category: ResearchCategory,
     draft: BaseModel,
     sources: dict[str, ResearchSource],
-) -> tuple[
-    MarketResearchAnalysis | CompetitorResearchAnalysis | SocialResearchAnalysis,
-    EvidenceCoverage,
-]:
+) -> tuple[ResearchAnalysis, EvidenceCoverage]:
     values: dict[str, Any] = {}
     required_dimensions: list[str] = []
     cited_sources: dict[str, ResearchSource] = {}
@@ -323,6 +420,9 @@ def _ground_analysis(
         ResearchCategory.MARKET: MarketResearchAnalysis,
         ResearchCategory.COMPETITOR: CompetitorResearchAnalysis,
         ResearchCategory.SOCIAL: SocialResearchAnalysis,
+        ResearchCategory.VISUAL_REFERENCE: VisualReferenceAnalysis,
+        ResearchCategory.TREND: TrendAnalysis,
+        ResearchCategory.PLATFORM: PlatformAnalysis,
     }[category]
     analysis = analysis_type.model_validate(values)
     covered_dimensions = [name for name in required_dimensions if values[name]]
@@ -379,7 +479,7 @@ def _limitations(
 
 
 def _ground_insight(
-    draft: _InsightDraft,
+    draft: _InsightDraft | _TrendInsightDraft,
     sources: dict[str, ResearchSource],
     *,
     dimension: str,
@@ -390,6 +490,10 @@ def _ground_insight(
     grounded: list[ResearchSource] = []
     evidence: list[ResearchEvidenceQuote] = []
     off_provenance = False
+    if not draft.evidence and unverified is not None:
+        # An observation with no citation at all is the same failure as one
+        # whose citation does not check out, and is reported the same way.
+        unverified[dimension] = unverified.get(dimension, 0) + 1
     for item in draft.evidence:
         quote = " ".join(item.quote.split())
         source = _evidence_source(item.source_id, quote, sources)
@@ -435,12 +539,20 @@ def _ground_insight(
         confidence = min(confidence, ResearchConfidence.MEDIUM, key=_CONFIDENCE_ORDER.index)
         if uncorroborated is not None:
             uncorroborated[dimension] = uncorroborated.get(dimension, 0) + 1
-    return ResearchInsight(
-        observation=draft.observation,
-        source_urls=[source.url for source in grounded],
-        evidence=evidence,
-        confidence=confidence,
-    )
+    values = {
+        "observation": draft.observation,
+        "source_urls": [source.url for source in grounded],
+        "evidence": evidence,
+        "confidence": confidence,
+    }
+    if isinstance(draft, _TrendInsightDraft):
+        return TrendInsight(
+            **values,
+            brand_fit=draft.brand_fit,
+            audience_fit=draft.audience_fit,
+            objective_fit=draft.objective_fit,
+        )
+    return ResearchInsight(**values)
 
 
 def _evidence_source(

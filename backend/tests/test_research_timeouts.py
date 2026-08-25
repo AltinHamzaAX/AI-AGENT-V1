@@ -42,6 +42,7 @@ def _context() -> ResearchContext:
         location="Prishtina airport",
         platform="Instagram",
         language="Albanian",
+        objective="Increase airport pickup bookings",
         required_facts={"pickup": "24/7"},
         contract_fingerprint="a" * 64,
     )
@@ -96,7 +97,10 @@ async def test_a_hung_search_does_not_wait_for_the_provider() -> None:
     tool = MarketResearchTool(provider, search_timeout_seconds=0.05)
 
     started = asyncio.get_running_loop().time()
-    with pytest.raises(ProviderError):
+    # A hung provider surfaces as a timeout rather than a generic failure: the
+    # stage metrics count timeouts apart from defects, and a category that runs
+    # several searches must not lose that distinction by losing all of them.
+    with pytest.raises(TimeoutError):
         await tool.research(_context(), researched_at=NOW, ttl_seconds=600)
     elapsed = asyncio.get_running_loop().time() - started
 
@@ -138,7 +142,7 @@ async def test_the_gate_wait_does_not_count_against_a_search() -> None:
 
     result = await service.run(_payload())
 
-    assert len(provider.requests) == 24
+    assert len(provider.requests) == 31
     assert all(
         getattr(result, category.value).status is ResearchStatus.SUCCEEDED
         for category in ResearchCategory
