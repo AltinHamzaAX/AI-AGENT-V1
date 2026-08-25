@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     embedding_provider: str = ""
     embedding_model: str = ""
     research_provider: str = ""
+    research_cache_ttl_seconds: int = Field(default=3_600, gt=0)
+    research_max_concurrency: int = Field(default=4, ge=1, le=8)
     tavily_api_base_url: str = "https://api.tavily.com"
     tavily_api_key: str = Field(default="", repr=False)
 

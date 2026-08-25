@@ -178,6 +178,29 @@ generated substitutes, identity drift, forbidden cropping, and out-of-range
 dominance produce `ASSET_POLICY_HARD_FAIL`; replaceable background and
 inspiration references may continue according to their explicit policy.
 
+## External Research
+
+`ExternalResearchService` is the central Ticket 18 orchestration boundary. It
+runs `MarketResearchTool`, `CompetitorResearchTool`, `AudienceResearchTool`,
+`SocialResearchTool`, `VisualReferenceTool`, `TrendResearchTool`,
+`PlatformResearchTool`, and `BrandProductResearchTool` with bounded concurrency.
+Each tool depends only on the provider-neutral research port and returns the same
+typed report contract.
+
+Reports contain a canonical query, status, provider, optional provider summary,
+source-linked findings, source excerpts, retrieval and expiry timestamps,
+confidence, and a deterministic cache key. Confidence is derived from provider
+scores rather than invented by another model. Duplicate URLs are removed and an
+empty search remains a valid, low-confidence `no_results` report.
+
+The cache boundary is injected. In-memory caching supports deterministic tests;
+`RedisResearchCache` provides cross-worker TTL reuse in production composition.
+Cache errors degrade to live research rather than discarding successful external
+evidence. The Supervisor stage validates semantic-contract and Audience
+Intelligence identity before any provider call and writes only `research`.
+Research remains evidence: Marketing Strategy decides, Creative interprets, and
+Design executes.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a

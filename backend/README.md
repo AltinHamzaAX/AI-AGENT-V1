@@ -159,3 +159,20 @@ preservation, crop/replacement/generation permissions, and dominance bounds are
 derived deterministically. Missing required assets fail before a provider call.
 The reusable usage gate returns `HARD_FAIL` for a missing or replaced protected
 asset, identity drift, forbidden crop or generation, or invalid dominance.
+
+## External Research Service
+
+Ticket 18 runs eight bounded research tools for market, competitors, audience,
+social behavior, visual references, trends, platform guidance, and verified
+brand/product context. `ExternalResearchService` schedules independent calls
+concurrently through the provider-neutral `ResearchProvider` and writes exactly
+the `research` workflow section.
+
+Every report is structured, timestamped, confidence-aware, and source-aware:
+findings retain their source URL, retrieval time, provider score, and explicit
+`external_evidence` authority. Research never mutates the semantic contract or
+produces positioning, strategy, copy, concepts, or design decisions. Cache keys
+include the category, canonical query, and contract fingerprint. A Redis adapter
+supports cross-worker TTL caching, while tests use the deterministic in-memory
+adapter. Successful provider work survives cache failures, and a retry can reuse
+the reports already cached by other categories.

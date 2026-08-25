@@ -10,6 +10,9 @@ from app.modules.posts.orchestration.brand_product import BrandProductStageHandl
 from app.modules.posts.orchestration.client_understanding import (
     ClientUnderstandingStageHandler,
 )
+from app.modules.posts.orchestration.external_research import (
+    ExternalResearchStageHandler,
+)
 from app.modules.posts.orchestration.supervisor import (
     PostSupervisorExecutor,
     SupervisorBlockedError,
@@ -25,6 +28,7 @@ __all__ = [
     "AssetIntelligenceStageHandler",
     "BrandProductStageHandler",
     "ClientUnderstandingStageHandler",
+    "ExternalResearchStageHandler",
     "PostSupervisorExecutor",
     "SupervisorBlockedError",
     "SupervisorCheckpoint",

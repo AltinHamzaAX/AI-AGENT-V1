@@ -164,7 +164,10 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
         SupervisorStagePolicy(
             SupervisorStage.EXTERNAL_RESEARCH,
             dependencies=(SupervisorStage.AUDIENCE_INTELLIGENCE,),
-            required_sections=(PostWorkflowSection.AUDIENCE,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.AUDIENCE,
+            ),
             output_sections=(PostWorkflowSection.RESEARCH,),
         ),
         SupervisorStagePolicy(
