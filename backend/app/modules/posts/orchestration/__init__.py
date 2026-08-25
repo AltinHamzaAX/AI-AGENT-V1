@@ -13,6 +13,9 @@ from app.modules.posts.orchestration.client_understanding import (
 from app.modules.posts.orchestration.external_research import (
     ExternalResearchStageHandler,
 )
+from app.modules.posts.orchestration.marketing_strategy import (
+    MarketingStrategyStageHandler,
+)
 from app.modules.posts.orchestration.supervisor import (
     PostSupervisorExecutor,
     SupervisorBlockedError,
@@ -29,6 +32,7 @@ __all__ = [
     "BrandProductStageHandler",
     "ClientUnderstandingStageHandler",
     "ExternalResearchStageHandler",
+    "MarketingStrategyStageHandler",
     "PostSupervisorExecutor",
     "SupervisorBlockedError",
     "SupervisorCheckpoint",

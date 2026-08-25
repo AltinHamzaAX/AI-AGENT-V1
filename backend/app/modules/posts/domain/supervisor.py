@@ -172,7 +172,10 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
             SupervisorStage.MARKETING_STRATEGY,
             dependencies=(SupervisorStage.EXTERNAL_RESEARCH,),
             required_sections=(
+                PostWorkflowSection.BRIEF,
                 PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.BRAND,
+                PostWorkflowSection.PRODUCT,
                 PostWorkflowSection.AUDIENCE,
                 PostWorkflowSection.RESEARCH,
             ),
