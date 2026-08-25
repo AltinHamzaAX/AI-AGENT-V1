@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Protocol
 
 
@@ -78,6 +79,11 @@ class ResearchRequest:
     search_depth: str = "basic"
     include_domains: tuple[str, ...] = ()
     exclude_domains: tuple[str, ...] = ()
+    topic: str = "general"
+    time_range: str | None = None
+    country: str | None = None
+    include_images: bool = False
+    include_raw_content: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +92,16 @@ class ResearchResult:
     url: str
     content: str
     score: float | None = None
+    published_at: datetime | None = None
+    #: Extracted page body when requested. `content` is only a search snippet,
+    #: which is usually too thin to quote evidence from.
+    raw_content: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchImage:
+    url: str
+    description: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +110,7 @@ class ResearchResponse:
     provider: str
     query: str
     answer: str | None = None
+    images: tuple[ResearchImage, ...] = ()
 
 
 class LLMProvider(Protocol):
@@ -154,6 +171,7 @@ __all__ = [
     "LLMRequest",
     "LLMResponse",
     "ProviderBundle",
+    "ResearchImage",
     "ResearchProvider",
     "ResearchRequest",
     "ResearchResponse",

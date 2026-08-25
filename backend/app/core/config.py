@@ -65,6 +65,29 @@ class Settings(BaseSettings):
     research_provider: str = ""
     research_cache_ttl_seconds: int = Field(default=3_600, gt=0)
     research_max_concurrency: int = Field(default=4, ge=1, le=8)
+    # Three nested bounds so a hung provider degrades one dimension, then one
+    # category, then the stage — instead of holding the generation job's whole
+    # budget. All three stay well under GENERATION_JOB_TIMEOUT_SECONDS.
+    research_search_timeout_seconds: float = Field(default=30.0, gt=0)
+    research_tool_timeout_seconds: float = Field(default=180.0, gt=0)
+    research_stage_timeout_seconds: float = Field(default=300.0, gt=0)
+
+    @model_validator(mode="after")
+    def validate_research_timeouts(self) -> Self:
+        if self.research_search_timeout_seconds > self.research_tool_timeout_seconds:
+            raise ValueError(
+                "RESEARCH_SEARCH_TIMEOUT_SECONDS must not exceed RESEARCH_TOOL_TIMEOUT_SECONDS"
+            )
+        if self.research_tool_timeout_seconds > self.research_stage_timeout_seconds:
+            raise ValueError(
+                "RESEARCH_TOOL_TIMEOUT_SECONDS must not exceed RESEARCH_STAGE_TIMEOUT_SECONDS"
+            )
+        if self.research_stage_timeout_seconds >= self.generation_job_timeout_seconds:
+            raise ValueError(
+                "RESEARCH_STAGE_TIMEOUT_SECONDS must be below GENERATION_JOB_TIMEOUT_SECONDS"
+            )
+        return self
+
     tavily_api_base_url: str = "https://api.tavily.com"
     tavily_api_key: str = Field(default="", repr=False)
 

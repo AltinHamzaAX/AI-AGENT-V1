@@ -189,8 +189,7 @@ async def test_client_understanding_extracts_lumma_brief_without_strategy_drift(
     assert brief["clarification"]["requires_user_input"] is False
     assert brief["clarification"]["questions"] == []
     classifications = {
-        item["field"]: item["classification"]
-        for item in brief["clarification"]["items"]
+        item["field"]: item["classification"] for item in brief["clarification"]["items"]
     }
     assert classifications["audience"] == "RESEARCHABLE"
     assert classifications["offer"] == "OPTIONAL"
@@ -239,9 +238,7 @@ async def test_client_understanding_routes_an_outcome_to_goal_not_cta() -> None:
     response["cta_intent"] = "më shumë vizita"
     response["evidence"].pop("goal")
     response["evidence"]["cta_intent"] = "më shumë vizita"
-    handler = ClientUnderstandingStageHandler(
-        _provider_bundle(_SequenceLLM(json.dumps(response)))
-    )
+    handler = ClientUnderstandingStageHandler(_provider_bundle(_SequenceLLM(json.dumps(response))))
 
     result = await handler.execute(_context())
 
@@ -256,9 +253,7 @@ async def test_client_understanding_keeps_an_explicit_cta_action() -> None:
     response = json.loads(_valid_response())
     response["cta_intent"] = "Rezervo tani"
     response["evidence"]["cta_intent"] = "Rezervo tani"
-    handler = ClientUnderstandingStageHandler(
-        _provider_bundle(_SequenceLLM(json.dumps(response)))
-    )
+    handler = ClientUnderstandingStageHandler(_provider_bundle(_SequenceLLM(json.dumps(response))))
 
     result = await handler.execute(context)
 
@@ -269,9 +264,7 @@ async def test_client_understanding_keeps_an_explicit_cta_action() -> None:
 async def test_client_understanding_uses_only_high_confidence_factual_fallbacks() -> None:
     context = _context()
     context.workflow_state["conversation_context"]["project_context"] = {}
-    handler = ClientUnderstandingStageHandler(
-        _provider_bundle(_SequenceLLM(json.dumps({})))
-    )
+    handler = ClientUnderstandingStageHandler(_provider_bundle(_SequenceLLM(json.dumps({}))))
 
     result = await handler.execute(context)
     brief = result.outputs[PostWorkflowSection.BRIEF]
@@ -310,9 +303,7 @@ async def test_client_understanding_normalizes_goal_and_recovers_explicit_cta() 
             "platform": "LinkedIn",
         },
     }
-    handler = ClientUnderstandingStageHandler(
-        _provider_bundle(_SequenceLLM(json.dumps(response)))
-    )
+    handler = ClientUnderstandingStageHandler(_provider_bundle(_SequenceLLM(json.dumps(response))))
 
     result = await handler.execute(context)
     brief = result.outputs[PostWorkflowSection.BRIEF]
@@ -337,9 +328,7 @@ async def test_brand_name_alone_cannot_masquerade_as_the_promoted_product() -> N
             "product_service": "ARKA",
         },
     }
-    handler = ClientUnderstandingStageHandler(
-        _provider_bundle(_SequenceLLM(json.dumps(response)))
-    )
+    handler = ClientUnderstandingStageHandler(_provider_bundle(_SequenceLLM(json.dumps(response))))
 
     result = await handler.execute(context)
     brief = result.outputs[PostWorkflowSection.BRIEF]
@@ -374,9 +363,7 @@ async def test_understanding_input_rejects_duplicate_attachment_identity() -> No
 
 
 @pytest_asyncio.fixture
-async def understanding_session_factory() -> AsyncIterator[
-    async_sessionmaker[AsyncSession]
-]:
+async def understanding_session_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     engine = create_async_engine(
         "sqlite+aiosqlite://",
         connect_args={"check_same_thread": False},

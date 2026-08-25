@@ -155,15 +155,9 @@ def _response(**overrides) -> str:
             "basis": [audience_basis, pickup_basis],
             "confidence": "medium",
         },
-        "needs": [
-            _insight("Immediate access to transport after landing.", pickup_basis)
-        ],
-        "desires": [
-            _insight("A smooth transition from arrival to onward travel.", pickup_basis)
-        ],
-        "pain_points": [
-            _insight("Waiting for transport after a flight.", pickup_basis)
-        ],
+        "needs": [_insight("Immediate access to transport after landing.", pickup_basis)],
+        "desires": [_insight("A smooth transition from arrival to onward travel.", pickup_basis)],
+        "pain_points": [_insight("Waiting for transport after a flight.", pickup_basis)],
         "objections": [
             _insight(
                 "Uncertainty about whether the vehicle will be ready.",
@@ -171,9 +165,7 @@ def _response(**overrides) -> str:
                 confidence="low",
             )
         ],
-        "motivation": [
-            _insight("Start the visit without avoidable delays.", pickup_basis)
-        ],
+        "motivation": [_insight("Start the visit without avoidable delays.", pickup_basis)],
         "purchase_intent": {
             "level": "medium",
             "rationale": "The audience has a time-sensitive transport use case.",
@@ -229,9 +221,7 @@ async def test_audience_intelligence_builds_grounded_customer_tension() -> None:
 
     assert set(result.outputs) == {PostWorkflowSection.AUDIENCE}
     audience = result.outputs[PostWorkflowSection.AUDIENCE]
-    assert {segment["parent_audience"] for segment in audience["segments"]} == {
-        contract.audience
-    }
+    assert {segment["parent_audience"] for segment in audience["segments"]} == {contract.audience}
     assert audience["target"]["segment"] == "Arrival-focused diaspora travelers"
     assert audience["customer_tension"] == {
         "current_state": "The traveler has landed and still needs dependable transport.",

@@ -210,8 +210,7 @@ def _analysis_source(
         "product": {
             "primary_entity": payload.product.primary_entity,
             "feature_benefit_value": [
-                item.model_dump(mode="json")
-                for item in payload.product.feature_benefit_value
+                item.model_dump(mode="json") for item in payload.product.feature_benefit_value
             ],
             "verified_facts": payload.product.verified_facts,
         },
@@ -225,12 +224,8 @@ def _analysis_source(
     for field_name in ("market", "location"):
         if source["semantic_contract"][field_name] is not None:
             allowed.add(f"semantic_contract.{field_name}")
-    allowed.update(
-        f"brand.verified_facts.{key}" for key in payload.brand.verified_facts
-    )
-    allowed.update(
-        f"product.verified_facts.{key}" for key in payload.product.verified_facts
-    )
+    allowed.update(f"brand.verified_facts.{key}" for key in payload.brand.verified_facts)
+    allowed.update(f"product.verified_facts.{key}" for key in payload.product.verified_facts)
     allowed.update(
         f"product.feature_benefit_value.{item.source_fact}"
         for item in payload.product.feature_benefit_value
@@ -294,15 +289,9 @@ def _validate_analysis(
     text_values = _all_strings(analysis.model_dump(mode="json"))
     source_text = _semantic(" ".join(_all_strings(source)))
     for marker in _UNSUPPORTED_ASSUMPTION_MARKERS:
-        if marker not in source_text and any(
-            marker in _semantic(value) for value in text_values
-        ):
+        if marker not in source_text and any(marker in _semantic(value) for value in text_values):
             raise ValueError(f"unsupported audience assumption: {marker}")
-    if any(
-        claim and claim in _semantic(value)
-        for claim in forbidden
-        for value in text_values
-    ):
+    if any(claim and claim in _semantic(value) for claim in forbidden for value in text_values):
         raise ValueError("audience intelligence contains a forbidden claim")
 
 
@@ -340,9 +329,7 @@ def _all_strings(value: Any) -> list[str]:
 def _confidence_values(value: Any) -> list[str]:
     if isinstance(value, dict):
         values = [value["confidence"]] if isinstance(value.get("confidence"), str) else []
-        return values + [
-            item for nested in value.values() for item in _confidence_values(nested)
-        ]
+        return values + [item for nested in value.values() for item in _confidence_values(nested)]
     if isinstance(value, list):
         return [item for nested in value for item in _confidence_values(nested)]
     return []

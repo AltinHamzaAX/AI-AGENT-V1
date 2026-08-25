@@ -1,5 +1,6 @@
 import base64
 import json
+from datetime import UTC, datetime
 from io import BytesIO
 
 import httpx
@@ -141,9 +142,7 @@ async def test_ollama_adapters_use_provider_neutral_contracts() -> None:
                 json={"model": "embeddinggemma", "embeddings": [[0.1, 0.2], [0.3, 0.4]]},
             )
         content = (
-            '{"objects": ["product"]}'
-            if payload["messages"][0].get("images")
-            else "completed"
+            '{"objects": ["product"]}' if payload["messages"][0].get("images") else "completed"
         )
         return httpx.Response(
             200,
@@ -156,12 +155,8 @@ async def test_ollama_adapters_use_provider_neutral_contracts() -> None:
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        llm = OllamaLLMProvider(
-            base_url="http://ollama.test", model="qwen", client=client
-        )
-        vision = OllamaVisionProvider(
-            base_url="http://ollama.test", model="qwen-vl", client=client
-        )
+        llm = OllamaLLMProvider(base_url="http://ollama.test", model="qwen", client=client)
+        vision = OllamaVisionProvider(base_url="http://ollama.test", model="qwen-vl", client=client)
         embedding = OllamaEmbeddingProvider(
             base_url="http://ollama.test", model="embeddinggemma", client=client
         )
@@ -171,26 +166,24 @@ async def test_ollama_adapters_use_provider_neutral_contracts() -> None:
         vision_response = await vision.analyze(
             VisionRequest(image=b"binary", mime_type="image/png", prompt="analyze")
         )
-        embedding_response = await embedding.embed(
-            EmbeddingRequest(texts=("one", "two"))
-        )
+        embedding_response = await embedding.embed(EmbeddingRequest(texts=("one", "two")))
 
     assert llm_response.text == "completed"
     assert llm_response.input_tokens == 4 and llm_response.output_tokens == 2
     assert vision_response.data == {"objects": ["product"]}
-    assert requests[1]["messages"][0]["images"] == [
-        base64.b64encode(b"binary").decode("ascii")
-    ]
+    assert requests[1]["messages"][0]["images"] == [base64.b64encode(b"binary").decode("ascii")]
     assert embedding_response.vectors == ((0.1, 0.2), (0.3, 0.4))
 
 
 @pytest.mark.asyncio
 async def test_tavily_adapter_maps_results_and_uses_bearer_auth() -> None:
     captured_authorization = ""
+    captured_payload: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal captured_authorization
+        nonlocal captured_authorization, captured_payload
         captured_authorization = request.headers["Authorization"]
+        captured_payload = json.loads(request.content)
         return httpx.Response(
             200,
             json={
@@ -202,6 +195,7 @@ async def test_tavily_adapter_maps_results_and_uses_bearer_auth() -> None:
                         "url": "https://example.test/source",
                         "content": "Source-aware evidence.",
                         "score": 0.9,
+                        "published_date": "2026-08-01T12:00:00Z",
                     }
                 ],
             },
@@ -210,12 +204,22 @@ async def test_tavily_adapter_maps_results_and_uses_bearer_auth() -> None:
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         provider = TavilyResearchProvider(api_key="tvly-secret", client=client)
         response = await provider.search(
-            ResearchRequest(query="Kosovo rentals", max_results=3)
+            ResearchRequest(
+                query="Kosovo rentals",
+                max_results=3,
+                topic="news",
+                time_range="year",
+                country="kosovo",
+            )
         )
 
     assert captured_authorization == "Bearer tvly-secret"
     assert response.answer == "Demand is seasonal."
     assert response.results[0].score == 0.9
+    assert response.results[0].published_at == datetime(2026, 8, 1, 12, tzinfo=UTC)
+    assert captured_payload["topic"] == "news"
+    assert captured_payload["time_range"] == "year"
+    assert captured_payload["country"] == "kosovo"
 
 
 @pytest.mark.asyncio

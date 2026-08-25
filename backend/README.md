@@ -176,3 +176,217 @@ include the category, canonical query, and contract fingerprint. A Redis adapter
 supports cross-worker TTL caching, while tests use the deterministic in-memory
 adapter. Successful provider work survives cache failures, and a retry can reuse
 the reports already cached by other categories.
+
+Ticket 19 adds strict, source-grounded analysis contracts to the market,
+competitor, and social tools. Market reports cover category context, market and
+customer expectations, observed offers, positioning patterns, and opportunities.
+Competitor reports cover messaging, offers, CTA, visual language,
+differentiation, and overused patterns. Social reports cover platform creative
+patterns, text density, CTA, logo placement, photography, graphic systems, and
+composition. Each dimension gets its own focused query. Results below the
+relevance threshold are removed, while retained sources receive explicit
+authority, locality, freshness, and composite quality scores. The model may cite
+only source IDs supplied by the search step and must include an exact excerpt
+quote; application code verifies both the quote and its allowed dimension before
+mapping it to the report URL. Unknown or fabricated citations fail closed.
+Unsupported claims are omitted and exposed through complete, partial, or
+insufficient evidence coverage with named missing dimensions. Competitor output
+carries the invariant `differentiate_do_not_copy`, and copy/replication
+instructions are rejected. These observations remain research evidence, not
+strategy, copy, creative direction, or design instructions.
+
+### Provider targeting
+
+Locality, recency, and source authority are bought at query time rather than
+recovered by scoring afterwards. Market-facing tools resolve the declared market
+or location to a provider-supported country and geo-target every request; the
+trend tool trades geo-targeting for the news index with a bounded recency
+window; and the platform tool pins the platform's own documentation domains
+instead of competing with SEO recaps of it. A market with no supported
+equivalent omits the parameter rather than targeting a neighbouring country.
+Kosovo is the one deliberate exception: the provider has no Kosovo value, so
+Kosovo markets are geo-targeted to Albania for shared-language regional
+coverage, and results that are Albania-specific rather than Kosovo-specific are
+still demoted by `locality_score`, which scores against the declared market
+text. Domain exclusions are an opt-in tuning hook and empty by default, because
+low-authority sources are demoted by `authority_score` rather than excluded,
+which keeps recall when nothing better exists.
+
+### Source quality
+
+Each source is scored on relevance, authority, locality and freshness, and its
+confidence follows that composite rather than a model's opinion. Two properties
+keep the top of the scale honest and reachable.
+
+Locality folds diacritics and matches stems, so a page written "Prishtinë" or
+"Kosovës" counts as local. Plain substring matching scored those exactly as low
+as a page about another continent, penalising sources for being local — the
+single biggest reason nothing reached high confidence in an Albanian market.
+Generic geography words like "airport" are excluded from the comparison,
+because they describe a place without identifying one and requiring them put
+the top of the scale out of reach.
+
+Freshness is optional. Most pages carry no publication date, and treating that
+absence as "not fresh" charged nearly every source for a measurement never
+taken. When the date is unknown, `freshness_score` is `None` and its weight is
+redistributed across the signals that were measured, so a source is judged on
+what is known about it. The confidence thresholds themselves are unchanged: a
+weak or off-market source still scores low.
+
+### Evidence depth
+
+Search snippets are a few hundred characters, which is too thin to quote
+evidence from. The three structured tools therefore request the extracted page
+body as markdown and build their excerpts from it, falling back to the snippet
+when the provider returns none. The analyzer is shown `ANALYSIS_EXCERPT_LIMIT`
+of each excerpt, and because evidence quotes must appear in the excerpt, that
+limit is exactly what bounds what the model is able to cite. Dimension searches
+also request more results, since result count does not change what a search
+costs — a wider net simply gives the quality ranking more to choose between.
+The snippet-only tools keep asking for snippets.
+
+### Cache reuse
+
+Cache keys are scoped to what actually changes a report: the canonical query,
+the market and location, and the tool's own request shaping. They are
+deliberately not keyed on the contract fingerprint. The fingerprint covers
+goal, offer, CTA intent, and forbidden claims — fields that never reach a
+search — so keying on it made every report private to a single generation and
+the hit rate effectively zero. Two contracts that ask the same question of the
+open web in the same place should share the answer, and the answer is public
+web evidence rather than anything client-specific. Market and location stay in
+the key because they drive `locality_score` and country targeting, so the same
+query in two places is genuinely two reports. In practice a client's second
+post reuses the first post's research entirely: four posts for one client cost
+twenty-four searches instead of ninety-six.
+
+### Visual references
+
+`VisualReferenceTool` requests observed images from the provider and carries
+them as `visual_references` on its report: a URL, an optional description, and
+a retrieval timestamp. Descriptions are requested together with the images,
+because an undescribed URL is not usable as a reference. Images are never
+fetched, stored, or reproduced — the report points at what the market's
+advertising looks like and stops there. Only this tool pays for images; the
+other seven request text alone, and image collection is part of the cache
+variant so the two are never confused.
+
+Images count as evidence: a visual reference report can succeed on images
+alone, without text sources. Duplicate and unusable image URLs are skipped like
+weak text results, and the list is bounded like every other evidence list.
+These remain observations, not art direction — Creative interprets and Design
+executes downstream.
+
+### Cost and latency
+
+The three multi-dimension tools issue their dimension searches concurrently
+instead of one after another, and the concurrency limit bounds provider calls
+rather than whole tools. Holding a slot for an entire tool let Market,
+Competitor, and Social block the five single-query tools behind them; the gate
+now saturates evenly, so `research_max_concurrency` translates directly into
+how many of the twenty-four searches are in flight. A dimension whose search
+fails degrades only that angle: the remaining dimensions still produce
+evidence, and the lost ones are named in the report's `degraded_dimensions` so
+their absence reads as a search failure rather than an empty market. A category
+fails only when every one of its dimensions fails.
+
+Evidence is stored once. A finding quotes a bounded lead extract of its source,
+cut on a sentence boundary, instead of copying the entire excerpt that already
+lives on the source — that duplication was doubling a payload written to
+workflow state, cached in Redis, and pasted into every downstream prompt. With
+realistic four-thousand-character excerpts this removes roughly forty percent
+of the research payload. Per-source confidence now lives on the source itself,
+derived from the composite quality score rather than restated per finding.
+
+### Provider failure kinds
+
+A spent plan allowance, a throttle and a broken provider all used to arrive as
+one generic failure, so the trace timeline could not tell "top up the plan"
+from "wait and retry" from "investigate a bug" — three different answers.
+`ProviderQuotaError` (HTTP 402 and Tavily's 432) and `ProviderRateLimitError`
+(429) are now their own types, and every other status stays a plain
+`ProviderError`. None of them echo the provider's response body.
+
+The reason survives the whole way up: a structured tool whose dimensions all
+failed on a spent allowance raises the quota error rather than flattening it
+into "every dimension failed", the stage raises it rather than a generic
+failure when nothing succeeded, and the measurements count `quota_exhausted`
+and `rate_limited` apart from `timed_out` and the failure total. A spent
+allowance cannot be short-circuited mid-run — all eight categories are in
+flight before the first response returns — so it changes how the stage reports
+itself rather than what it spends.
+
+### Measurement
+
+Every failure mode in this stage is quiet by design: a cache hit, a timed-out
+category, and a dimension that lost its search all still produce a valid
+result. Each run therefore emits a typed `ResearchStageMetrics` — per category
+its status, whether it came from cache, duration, confidence, source and
+visual-reference counts, degraded dimensions, coverage status and mean source
+quality; and per stage the totals, cache hit ratio, timeout count, and the
+slowest category that was not served from cache.
+
+Measurements travel through a sink rather than into workflow state, so the
+evidence contract stays evidence and downstream prompts do not carry
+operational data. `TraceResearchMetricsSink` writes them onto the existing
+execution trace timeline — one `tool` record per category and one
+`generation_step` record for the stage — so no separate metrics store is
+needed and a timed-out category shows as `timeout` rather than a generic
+failure. The stage totals are also logged on every run, so the numbers exist
+even with no sink wired up. Records carry counts and durations only: no query,
+source, provider payload, or client name. A sink that raises is logged and
+ignored, because measurement must never be a way for research to fail.
+
+### Time bounds
+
+Three nested bounds keep a hung provider from holding the generation job's
+budget, and each degrades into typed evidence rather than a hang.
+`RESEARCH_SEARCH_TIMEOUT_SECONDS` bounds one provider call, so a stuck
+dimension becomes a `degraded_dimensions` entry while its siblings still
+answer. `RESEARCH_TOOL_TIMEOUT_SECONDS` bounds one category, which becomes a
+`failed` report with a `TimeoutError` code. `RESEARCH_STAGE_TIMEOUT_SECONDS`
+bounds the stage: each tool is given whatever is left of the budget, so
+categories that already finished keep their reports instead of being thrown
+away by cancelling the whole run. Configuration is rejected unless search fits
+inside tool, tool inside stage, and stage inside
+`GENERATION_JOB_TIMEOUT_SECONDS`.
+
+Waiting for a concurrency slot is deliberately outside the search timeout, so a
+queued call still gets its full budget once a slot frees. The deadline is
+monotonic rather than taken from the injectable clock, which is a test seam and
+may be frozen.
+
+### Degradation
+
+The eight tools fail independently. A tool that raises produces a typed
+`failed` report for its own category carrying a safe error code — the exception
+type only, never a provider message, response body, or credential — while the
+remaining categories complete normally. `failed` is deliberately distinct from
+`no_results`: absence of evidence and absence of research are different claims,
+and only the latter is worth retrying. A failed report holds no sources,
+findings, or analysis, and the schema rejects any report that mixes the two.
+Structured analysis fails loudly rather than silently shipping a report that
+lost it, so an unparseable or hallucinated analysis degrades that one category.
+When every category fails the service raises instead of returning, so the
+Supervisor retries the stage rather than persisting empty evidence.
+
+Only reports that actually carry evidence are cached. Empty and failed reports
+are never written, because a cached failure would be served back to the
+Supervisor's own retry for the whole TTL and turn a momentary provider problem
+into an hour of empty research. Search results that cannot be turned into a
+usable source — relative or non-HTTP URLs — are skipped like any other weak
+result rather than ending the category.
+
+### Language
+
+Analysis is English end to end: every query, observation, and downstream agent
+input is English regardless of the market. Evidence quotes are the deliberate
+exception. A quote is verified character for character against its source
+excerpt, so it stays in the source language and carries an optional English
+`translation` alongside it. Sources written in the market's own language are
+first-class evidence. Dimension keyword matching therefore never filters quotes
+and never filters insights; topical fit is already established at retrieval
+time, since a source may only support a dimension whose own query returned it.
+Keyword agreement with the English observation only decides whether an insight
+may claim high confidence, and every capped dimension is named in the report's
+evidence-coverage limitations rather than dropped silently.

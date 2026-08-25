@@ -153,9 +153,7 @@ async def test_logo_and_product_receive_deterministic_identity_policies() -> Non
     assert all(not asset["allow_replace"] for asset in assets)
     assert all(not asset["allow_generation"] for asset in assets)
     assert assets[0]["allow_crop"] is False
-    assert assets[0]["contract_fingerprint"] == _contract(
-        required_assets=[product_id]
-    ).fingerprint
+    assert assets[0]["contract_fingerprint"] == _contract(required_assets=[product_id]).fingerprint
 
 
 @pytest.mark.asyncio

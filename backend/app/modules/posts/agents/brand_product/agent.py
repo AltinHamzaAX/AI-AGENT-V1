@@ -71,9 +71,7 @@ class BrandProductStrategistAgent:
             )
         )
         try:
-            analysis = BrandProductLLMOutput.model_validate(
-                _parse_json_object(response.text)
-            )
+            analysis = BrandProductLLMOutput.model_validate(_parse_json_object(response.text))
             return _ground_analysis(contract, analysis)
         except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
             raise ProviderResponseError(

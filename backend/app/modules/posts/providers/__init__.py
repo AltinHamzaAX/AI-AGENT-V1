@@ -10,6 +10,7 @@ from app.modules.posts.providers.contracts import (
     LLMRequest,
     LLMResponse,
     ProviderBundle,
+    ResearchImage,
     ResearchProvider,
     ResearchRequest,
     ResearchResponse,
@@ -22,6 +23,8 @@ from app.modules.posts.providers.contracts import (
 from app.modules.posts.providers.errors import (
     ProviderConfigurationError,
     ProviderError,
+    ProviderQuotaError,
+    ProviderRateLimitError,
     ProviderResponseError,
 )
 
@@ -39,7 +42,10 @@ __all__ = [
     "ProviderBundle",
     "ProviderConfigurationError",
     "ProviderError",
+    "ProviderQuotaError",
+    "ProviderRateLimitError",
     "ProviderResponseError",
+    "ResearchImage",
     "ResearchProvider",
     "ResearchRequest",
     "ResearchResponse",

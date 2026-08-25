@@ -98,9 +98,7 @@ class TracedStorageProvider:
         self._trace = trace
 
     async def is_available(self) -> bool:
-        return await self._trace.call(
-            "storage.is_available", {}, self._provider.is_available
-        )
+        return await self._trace.call("storage.is_available", {}, self._provider.is_available)
 
     async def put(
         self,

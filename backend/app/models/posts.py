@@ -93,8 +93,7 @@ class PostGenerationJobModel(Base):
         CheckConstraint("max_attempts > 0", name="positive_max_attempts"),
         CheckConstraint("timeout_seconds > 0", name="positive_timeout_seconds"),
         CheckConstraint(
-            "status IN ('queued', 'running', 'retry_scheduled', 'completed', "
-            "'failed', 'dead')",
+            "status IN ('queued', 'running', 'retry_scheduled', 'completed', 'failed', 'dead')",
             name="valid_status",
         ),
         UniqueConstraint("generation_id", name="uq_post_generation_jobs_generation"),

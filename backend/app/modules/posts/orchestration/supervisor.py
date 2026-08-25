@@ -129,9 +129,7 @@ class PostSupervisorExecutor:
                     "post_id": str(checkpoint.post_id),
                     "job_id": str(job_id),
                     "action": decision.action.value,
-                    "next_stage": (
-                        decision.next_stage.value if decision.next_stage else None
-                    ),
+                    "next_stage": (decision.next_stage.value if decision.next_stage else None),
                     "reason": decision.reason,
                 },
             )

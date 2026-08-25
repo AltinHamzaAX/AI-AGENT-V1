@@ -1,4 +1,9 @@
-"""Run Ticket 18 against the configured research provider and verify caching."""
+"""Run the external research stage against configured providers.
+
+Verifies the whole stage end to end: structured analysis, provider targeting,
+evidence depth, visual references, degradation, measurement, and cache reuse
+both for a repeated request and for a different post by the same client.
+"""
 
 import asyncio
 import json
@@ -9,28 +14,36 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import get_settings  # noqa: E402
-from app.integrations.provider_factory import create_research_provider  # noqa: E402
+from app.integrations.provider_factory import create_provider_bundle  # noqa: E402
 from app.modules.posts.agents.audience_research import AudienceIntelligence  # noqa: E402
 from app.modules.posts.domain.semantic_contract import PostSemanticContract  # noqa: E402
 from app.modules.posts.tools.research import (  # noqa: E402
     ExternalResearchInput,
     ExternalResearchService,
     InMemoryResearchCache,
+    InMemoryResearchMetricsSink,
     ResearchCategory,
+    default_research_tools,
+    resolve_country,
+    validate_external_research_input,
 )
 
 
-def _contract() -> PostSemanticContract:
+def _contract(
+    *,
+    goal: str = "Drive bookings",
+    offer: str = "From EUR 35/day",
+) -> PostSemanticContract:
     return PostSemanticContract.create(
         company="Promotiva Mobility",
         brand="Prishtina Drive",
         product="Airport car rental",
         primary_entity="Airport car rental",
-        goal="Drive bookings",
+        goal=goal,
         audience="Diaspora arriving in Kosovo",
         market="Kosovo",
         location="Prishtina airport",
-        offer="From EUR 35/day",
+        offer=offer,
         cta_intent="Book now",
         platform="Instagram",
         language="Albanian",
@@ -97,48 +110,175 @@ def _audience(contract: PostSemanticContract) -> AudienceIntelligence:
     )
 
 
+def _payload(contract: PostSemanticContract) -> ExternalResearchInput:
+    return ExternalResearchInput(
+        semantic_contract=contract.to_dict(),
+        audience=_audience(contract),
+    )
+
+
+def _report_summary(report) -> dict:
+    excerpts = [len(source.excerpt) for source in report.sources]
+    return {
+        "status": report.status.value,
+        "confidence": report.confidence.value,
+        "sources": len(report.sources),
+        "longest_excerpt_chars": max(excerpts) if excerpts else 0,
+        "visual_references": len(report.visual_references),
+        "degraded_dimensions": report.degraded_dimensions,
+        "structured_analysis": report.analysis is not None,
+        "evidence_coverage": (
+            report.evidence_coverage.model_dump(mode="json")
+            if report.evidence_coverage is not None
+            else None
+        ),
+        "error": report.error,
+        "cached": report.cached,
+        "expires_at": report.expires_at.isoformat(),
+    }
+
+
 def _summary(result) -> dict:
     return {
         "contract_fingerprint": result.contract_fingerprint,
         "researched_at": result.researched_at.isoformat(),
         "reports": {
-            category.value: {
-                "status": getattr(result, category.value).status.value,
-                "confidence": getattr(result, category.value).confidence.value,
-                "sources": len(getattr(result, category.value).sources),
-                "cached": getattr(result, category.value).cached,
-                "expires_at": getattr(result, category.value).expires_at.isoformat(),
-            }
+            category.value: _report_summary(getattr(result, category.value))
             for category in ResearchCategory
         },
     }
 
 
+def _check(label: str, ok: bool, detail: str = "") -> bool:
+    status = "PASS" if ok else "FAIL"
+    suffix = f" - {detail}" if detail else ""
+    print(f"  [{status}] {label}{suffix}")
+    return ok
+
+
+def _print_targeting(context, provider) -> None:
+    print("Targeting")
+    print(f"  market={context.market!r} location={context.location!r}")
+    print(f"  resolved provider country={resolve_country(context)!r}")
+    tools = {tool.category: tool for tool in default_research_tools(provider)}
+    for category in ResearchCategory:
+        tool = tools[category]
+        request = tool.build_request(
+            context,
+            query=tool.build_query(context),
+            max_results=3,
+        )
+        print(
+            f"  {category.value:<17} topic={request.topic:<7} "
+            f"time_range={str(request.time_range):<5} country={str(request.country):<8} "
+            f"pinned_domains={len(request.include_domains)} "
+            f"images={str(request.include_images):<5} body={request.include_raw_content}"
+        )
+
+
 async def _run() -> None:
     settings = get_settings()
+    providers = create_provider_bundle(settings)
     contract = _contract()
     cache = InMemoryResearchCache()
-    service = ExternalResearchService.from_provider(
-        create_research_provider(settings),
-        cache=cache,
-        cache_ttl_seconds=settings.research_cache_ttl_seconds,
-        max_concurrency=settings.research_max_concurrency,
-    )
-    payload = ExternalResearchInput(
-        semantic_contract=contract.to_dict(),
-        audience=_audience(contract),
-    )
+    metrics = InMemoryResearchMetricsSink()
 
-    print("Running 8 external research categories...")
-    first = await service.run(payload)
+    def service() -> ExternalResearchService:
+        return ExternalResearchService.from_providers(
+            providers.research,
+            providers.llm,
+            cache=cache,
+            cache_ttl_seconds=settings.research_cache_ttl_seconds,
+            max_concurrency=settings.research_max_concurrency,
+            search_timeout_seconds=settings.research_search_timeout_seconds,
+            tool_timeout_seconds=settings.research_tool_timeout_seconds,
+            stage_timeout_seconds=settings.research_stage_timeout_seconds,
+            metrics_sink=metrics,
+        )
+
+    _, context = validate_external_research_input(_payload(contract))
+    _print_targeting(context, providers.research)
+
+    print("\nRunning 8 external research categories...")
+    first = await service().run(_payload(contract))
     print(json.dumps(_summary(first), ensure_ascii=False, indent=2))
 
+    print("\nStage metrics")
+    print(json.dumps(metrics.recorded[-1].as_metadata(), indent=2))
+
     print("\nRepeating the same request to verify cache reuse...")
-    second = await service.run(payload)
-    if not all(getattr(second, category.value).cached for category in ResearchCategory):
-        raise RuntimeError("second research run was not fully cached")
-    print(json.dumps(_summary(second), ensure_ascii=False, indent=2))
-    print("\nALL 8 RESEARCH TOOLS PASSED; SECOND RUN WAS 100% CACHED")
+    second = await service().run(_payload(contract))
+
+    print("Same client, different post (new goal and offer)...")
+    other_contract = _contract(goal="Grow winter demand", offer="From EUR 29/day")
+    other = await service().run(_payload(other_contract))
+
+    longest_excerpt = max(
+        (
+            len(source.excerpt)
+            for category in ResearchCategory
+            for source in getattr(first, category.value).sources
+        ),
+        default=0,
+    )
+    failures = [
+        f"{category.value}={getattr(first, category.value).error}"
+        for category in ResearchCategory
+        if getattr(first, category.value).error
+    ]
+
+    print("\nChecks")
+    checks = [
+        _check(
+            "market, competitor and social carry structured analysis",
+            all(
+                getattr(first, name).analysis is not None
+                for name in ("market", "competitor", "social")
+            ),
+        ),
+        _check(
+            "no category failed",
+            not failures,
+            ", ".join(failures),
+        ),
+        _check(
+            "evidence is deeper than a search snippet",
+            longest_excerpt > 1_000,
+            f"longest excerpt {longest_excerpt} chars",
+        ),
+        _check(
+            "visual reference research returned images",
+            bool(first.visual_reference.visual_references),
+            f"{len(first.visual_reference.visual_references)} images",
+        ),
+        _check(
+            "repeat request was fully cached",
+            all(getattr(second, category.value).cached for category in ResearchCategory),
+        ),
+        _check(
+            "a different post for the same client reused the research",
+            all(getattr(other, category.value).cached for category in ResearchCategory),
+            f"fingerprint {first.contract_fingerprint[:8]} -> {other.contract_fingerprint[:8]}",
+        ),
+        _check(
+            "every run was measured",
+            len(metrics.recorded) == 3,
+            f"{len(metrics.recorded)} stage measurements",
+        ),
+        _check(
+            "timeouts are configured in order",
+            settings.research_search_timeout_seconds
+            <= settings.research_tool_timeout_seconds
+            <= settings.research_stage_timeout_seconds,
+            f"{settings.research_search_timeout_seconds}s / "
+            f"{settings.research_tool_timeout_seconds}s / "
+            f"{settings.research_stage_timeout_seconds}s",
+        ),
+    ]
+
+    if not all(checks):
+        raise RuntimeError("external research verification failed")
+    print("\nEXTERNAL RESEARCH VERIFIED")
 
 
 if __name__ == "__main__":

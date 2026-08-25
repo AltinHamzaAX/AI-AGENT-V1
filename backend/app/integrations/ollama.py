@@ -39,18 +39,44 @@ class _OllamaAdapter:
         )
 
 
+#: Ollama's own default. Anything beyond it is dropped without warning.
+DEFAULT_CONTEXT_TOKENS = 4_096
+#: Ceiling, so an unexpectedly large prompt cannot exhaust the host's memory.
+MAX_CONTEXT_TOKENS = 32_768
+#: Room for the model's own answer on top of the prompt.
+RESPONSE_TOKEN_ALLOWANCE = 2_048
+
+
 class OllamaLLMProvider(_OllamaAdapter):
+    @staticmethod
+    def _context_window(messages: list[dict[str, str]]) -> int:
+        # Four characters per token is rough, but it only has to be safe: the
+        # window is rounded up to a power of two and capped.
+        estimated = sum(len(message["content"]) for message in messages) // 4
+        needed = estimated + RESPONSE_TOKEN_ALLOWANCE
+        window = DEFAULT_CONTEXT_TOKENS
+        while window < needed and window < MAX_CONTEXT_TOKENS:
+            window *= 2
+        return min(window, MAX_CONTEXT_TOKENS)
+
     async def complete(self, request: LLMRequest) -> LLMResponse:
         if not request.messages:
             raise ValueError("LLM request requires at least one message")
+        messages = [
+            {"role": message.role, "content": message.content} for message in request.messages
+        ]
         payload: dict[str, Any] = {
             "model": self._model,
-            "messages": [
-                {"role": message.role, "content": message.content}
-                for message in request.messages
-            ],
+            "messages": messages,
             "stream": False,
-            "options": {"temperature": request.temperature},
+            "options": {
+                "temperature": request.temperature,
+                # Ollama defaults to a 4k window and silently truncates anything
+                # longer, so a large prompt reaches the model with its tail cut
+                # off and comes back as malformed output. Size the window to the
+                # request instead of hoping the default fits.
+                "num_ctx": self._context_window(messages),
+            },
         }
         if request.response_format == "json":
             payload["format"] = "json"

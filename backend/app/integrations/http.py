@@ -2,7 +2,17 @@ from typing import Any
 
 import httpx
 
-from app.modules.posts.providers import ProviderError, ProviderResponseError
+from app.modules.posts.providers import (
+    ProviderError,
+    ProviderQuotaError,
+    ProviderRateLimitError,
+    ProviderResponseError,
+)
+
+#: 402 is the conventional "payment required"; Tavily answers 432 for a spent
+#: plan allowance. Both mean the same thing to a caller: stop asking.
+_QUOTA_STATUSES = frozenset({402, 432})
+_RATE_LIMIT_STATUS = 429
 
 
 class ProviderHTTPAdapter:
@@ -75,9 +85,16 @@ class ProviderHTTPAdapter:
         except httpx.TimeoutException as exc:
             raise ProviderError(f"{provider} request timed out") from exc
         except httpx.HTTPStatusError as exc:
-            raise ProviderError(
-                f"{provider} request failed with status {exc.response.status_code}"
-            ) from exc
+            status = exc.response.status_code
+            if status in _QUOTA_STATUSES:
+                raise ProviderQuotaError(
+                    f"{provider} usage allowance is exhausted (status {status})"
+                ) from exc
+            if status == _RATE_LIMIT_STATUS:
+                raise ProviderRateLimitError(
+                    f"{provider} rate limit reached (status {status})"
+                ) from exc
+            raise ProviderError(f"{provider} request failed with status {status}") from exc
         except httpx.HTTPError as exc:
             raise ProviderError(f"{provider} request failed") from exc
 
