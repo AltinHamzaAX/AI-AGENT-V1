@@ -235,6 +235,7 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
             required_sections=(
                 PostWorkflowSection.DESIGN_SPEC,
                 PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.ASSETS,
             ),
             output_sections=(PostWorkflowSection.GENERATION_PLAN,),
         ),

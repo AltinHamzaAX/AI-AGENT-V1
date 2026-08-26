@@ -19,6 +19,9 @@ from app.modules.posts.orchestration.design_spec import DesignSpecStageHandler
 from app.modules.posts.orchestration.external_research import (
     ExternalResearchStageHandler,
 )
+from app.modules.posts.orchestration.generation_planning import (
+    GenerationPlanningStageHandler,
+)
 from app.modules.posts.orchestration.marketing_strategy import (
     MarketingStrategyStageHandler,
 )
@@ -42,6 +45,7 @@ __all__ = [
     "DesignSpecStageHandler",
     "CopywritingStageHandler",
     "ExternalResearchStageHandler",
+    "GenerationPlanningStageHandler",
     "MarketingStrategyStageHandler",
     "PostSupervisorExecutor",
     "SupervisorBlockedError",
