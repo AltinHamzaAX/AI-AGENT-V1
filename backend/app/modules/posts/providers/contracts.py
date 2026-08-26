@@ -156,7 +156,21 @@ class ProviderBundle:
     embedding: EmbeddingProvider
     research: ResearchProvider
     storage: StorageProvider
+    #: Set only when a separate model is configured for the stages that invent
+    #: rather than extract. Left unset, every stage shares `llm`.
+    creative_llm_override: LLMProvider | None = None
     names: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def creative_llm(self) -> LLMProvider:
+        """The model for work that has to be thought up rather than read off.
+
+        Extraction stages are answerable to evidence in front of them and a
+        small model does that well. Invention has nothing to copy from, so the
+        deployment can point those stages somewhere stronger without paying
+        for it on every other call.
+        """
+        return self.creative_llm_override or self.llm
 
 
 __all__ = [

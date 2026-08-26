@@ -184,7 +184,13 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
         SupervisorStagePolicy(
             SupervisorStage.CREATIVE_CONCEPT,
             dependencies=(SupervisorStage.MARKETING_STRATEGY,),
-            required_sections=(PostWorkflowSection.MARKETING_STRATEGY,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.BRAND,
+                PostWorkflowSection.AUDIENCE,
+                PostWorkflowSection.RESEARCH,
+                PostWorkflowSection.MARKETING_STRATEGY,
+            ),
             output_sections=(PostWorkflowSection.CREATIVE_CONCEPT,),
         ),
         SupervisorStagePolicy(

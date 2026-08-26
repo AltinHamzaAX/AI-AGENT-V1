@@ -151,6 +151,31 @@ async def test_provider_calls_capture_provider_model_and_token_metadata() -> Non
     assert "private-storage-data" not in repr(recorder.traces)
 
 
+
+@pytest.mark.asyncio
+async def test_a_separate_creative_model_is_traced_like_any_other_provider() -> None:
+    """An untraced provider is an unobservable one, whichever stage holds it."""
+    recorder = InMemoryExecutionTraceRecorder()
+    invocation = InvocationContext(post_id=uuid4(), generation_id=uuid4())
+    bundle = ProviderBundle(
+        llm=MockLLMProvider(),
+        vision=MockVisionProvider(),
+        image=MockImageProvider(),
+        embedding=MockEmbeddingProvider(),
+        research=MockResearchProvider(),
+        storage=MockStorageProvider(),
+        creative_llm_override=MockLLMProvider(),
+        names={"llm": "mock"},
+    )
+
+    traced = trace_provider_bundle(bundle, recorder=recorder, invocation=invocation)
+    await traced.creative_llm.complete(
+        LLMRequest(messages=(LLMMessage(role="user", content="invent"),))
+    )
+
+    assert traced.creative_llm is not traced.llm
+    assert [trace.name for trace in recorder.traces] == ["llm.complete"]
+
 @pytest.mark.asyncio
 async def test_validation_and_provider_errors_record_only_safe_error_codes() -> None:
     recorder = InMemoryExecutionTraceRecorder()
