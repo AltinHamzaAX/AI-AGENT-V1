@@ -1,5 +1,6 @@
 """Posts workflow coordination boundary."""
 
+from app.modules.posts.orchestration.art_direction import ArtDirectionStageHandler
 from app.modules.posts.orchestration.asset_intelligence import (
     AssetIntelligenceStageHandler,
 )
@@ -31,6 +32,7 @@ from app.modules.posts.orchestration.supervisor import (
 )
 
 __all__ = [
+    "ArtDirectionStageHandler",
     "AudienceIntelligenceStageHandler",
     "AssetIntelligenceStageHandler",
     "BrandProductStageHandler",
