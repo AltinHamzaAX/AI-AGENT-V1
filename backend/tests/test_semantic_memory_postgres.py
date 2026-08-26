@@ -7,11 +7,14 @@ import pytest_asyncio
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.infrastructure.database.repositories.post_memory_scope import (
+    SQLAlchemyPostMemoryScopeResolver,
+)
 from app.infrastructure.database.repositories.semantic_memory import (
     SQLAlchemySemanticMemoryRepository,
 )
 from app.integrations.mock import MockEmbeddingProvider
-from app.models.posts import PostSemanticMemoryModel
+from app.models.posts import PostModel, PostSemanticMemoryModel
 from app.modules.posts.domain.memory import (
     SemanticMemoryKind,
     SemanticMemoryScope,
@@ -107,3 +110,29 @@ async def test_pgvector_retrieval_is_exactly_user_and_brand_scoped(
                     PostSemanticMemoryModel.user_id.in_((user_a, user_b))
                 )
             )
+
+
+@pytest.mark.asyncio
+async def test_post_memory_scope_resolves_the_owning_user_and_project(
+    postgres_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    post_id = uuid4()
+    user_id = uuid4()
+    project_id = uuid4()
+    try:
+        async with postgres_session_factory.begin() as session:
+            session.add(PostModel(id=post_id, user_id=user_id, project_id=project_id))
+
+        async with postgres_session_factory() as session:
+            scope = await SQLAlchemyPostMemoryScopeResolver(session).resolve_project_scope(
+                post_id=post_id
+            )
+
+        assert scope == SemanticMemoryScope(
+            user_id=user_id,
+            level=SemanticMemoryScopeLevel.PROJECT,
+            project_id=project_id,
+        )
+    finally:
+        async with postgres_session_factory.begin() as session:
+            await session.execute(delete(PostModel).where(PostModel.id == post_id))

@@ -26,16 +26,32 @@ class CreativeAngle(StrEnum):
     BRAND_SYMBOL = "brand_symbol"
 
 
-#: The bar a selected concept has to clear, per scored dimension. Claim safety
-#: is absolute because an unprovable promise is not a creative tradeoff.
+
+CONCEPT_SELECTION_DIMENSIONS = (
+    "strategy_fit",
+    "audience_fit",
+    "brand_fit",
+    "originality",
+    "clarity",
+    "visual_potential",
+    "platform_fit",
+    "production_feasibility",
+)
+
+#: The bar a selected concept has to clear. Ticket 24's differentiation,
+#: safety and hook-alignment checks remain gates rather than ranking criteria.
 QUALITY_THRESHOLDS: dict[str, int] = {
     "strategy_fit": 8,
+    "audience_fit": 8,
+    "brand_fit": 8,
     "originality": 8,
-    "territory_differentiation": 8,
+    "clarity": 8,
     "visual_potential": 8,
+    "platform_fit": 8,
+    "production_feasibility": 8,
+    "territory_differentiation": 8,
     "claim_safety": 10,
     "concept_hook_alignment": 9,
-    "production_readiness": 8,
 }
 
 
@@ -49,6 +65,12 @@ class CreativeDirectorInput(BaseModel):
     brand: BrandAnalysis
     research: ExternalResearchResult
     semantic_contract: dict[str, Any]
+    rejected_concept_memory: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("rejected_concept_memory")
+    @classmethod
+    def normalize_rejected_memory(cls, values: list[str]) -> list[str]:
+        return _unique(values)
 
     @model_validator(mode="after")
     def inputs_must_describe_one_post(self) -> "CreativeDirectorInput":
@@ -79,12 +101,16 @@ class CreativeEvaluation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     strategy_fit: int = Field(ge=1, le=10)
+    audience_fit: int = Field(ge=1, le=10)
+    brand_fit: int = Field(ge=1, le=10)
     originality: int = Field(ge=1, le=10)
-    territory_differentiation: int = Field(ge=1, le=10)
+    clarity: int = Field(ge=1, le=10)
     visual_potential: int = Field(ge=1, le=10)
+    platform_fit: int = Field(ge=1, le=10)
+    production_feasibility: int = Field(ge=1, le=10)
+    territory_differentiation: int = Field(ge=1, le=10)
     claim_safety: int = Field(ge=1, le=10)
     concept_hook_alignment: int = Field(ge=1, le=10)
-    production_readiness: int = Field(ge=1, le=10)
     weakness: str = Field(min_length=1, max_length=500)
 
     @field_validator("weakness")
@@ -94,7 +120,7 @@ class CreativeEvaluation(BaseModel):
 
     @model_validator(mode="after")
     def scorecard_must_admit_a_tradeoff(self) -> "CreativeEvaluation":
-        if all(score == 10 for score in self.craft_scores().values()):
+        if all(score == 10 for score in self.scores().values()):
             raise ValueError("a flawless scorecard is not a credible creative evaluation")
         return self
 
@@ -104,12 +130,15 @@ class CreativeEvaluation(BaseModel):
             name: getattr(self, name) for name in QUALITY_THRESHOLDS if name != "claim_safety"
         }
 
+    def selection_scores(self) -> dict[str, int]:
+        return {name: getattr(self, name) for name in CONCEPT_SELECTION_DIMENSIONS}
+
     def scores(self) -> dict[str, int]:
         return {name: getattr(self, name) for name in QUALITY_THRESHOLDS}
 
     @property
     def total(self) -> int:
-        return sum(self.scores().values())
+        return sum(self.selection_scores().values())
 
 
 class CreativeTerritory(BaseModel):
@@ -228,6 +257,25 @@ class CreativeQualityGate(BaseModel):
         return [check for check in self.checks if not check.passed]
 
 
+class WinningConcept(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str = Field(pattern=r"^idea_[1-5]$")
+    rank: int = Field(default=1, ge=1, le=1)
+    total_score: int = Field(ge=8, le=80)
+    rationale: str = Field(min_length=1, max_length=2_000)
+
+
+class RejectedConcept(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str = Field(pattern=r"^idea_[1-5]$")
+    rank: int = Field(ge=2, le=5)
+    total_score: int = Field(ge=8, le=80)
+    rejection_reason: str = Field(min_length=1, max_length=1_000)
+    weakness: str = Field(min_length=1, max_length=500)
+
+
 class CreativeDirectorLLMOutput(BaseModel):
     """Exploration only; final selection is computed by the application."""
 
@@ -259,7 +307,8 @@ class CreativeDirectorLLMOutput(BaseModel):
 class CreativeDirection(CreativeDirectorLLMOutput):
     model_config = ConfigDict(extra="forbid")
 
-    selected_big_idea_id: str = Field(pattern=r"^idea_[1-5]$")
+    winning_concept: WinningConcept
+    rejected_concepts: list[RejectedConcept] = Field(min_length=2, max_length=4)
     creative_rationale: str = Field(min_length=1, max_length=2_000)
     quality_gate: CreativeQualityGate
     limitations: list[str] = Field(default_factory=list, max_length=20)
@@ -272,10 +321,21 @@ class CreativeDirection(CreativeDirectorLLMOutput):
 
     @model_validator(mode="after")
     def selected_idea_must_clear_the_gate(self) -> "CreativeDirection":
-        if self.selected_big_idea_id not in {item.id for item in self.big_idea_candidates}:
+        candidate_ids = {item.id for item in self.big_idea_candidates}
+        selected_id = self.winning_concept.candidate_id
+        if selected_id not in candidate_ids:
             raise ValueError("selected big idea must reference a supplied candidate")
-        if self.quality_gate.candidate_id != self.selected_big_idea_id:
+        if self.quality_gate.candidate_id != selected_id:
             raise ValueError("the quality gate must describe the selected big idea")
+        rejected_ids = [item.candidate_id for item in self.rejected_concepts]
+        if len(rejected_ids) != len(set(rejected_ids)):
+            raise ValueError("rejected concept IDs must be unique")
+        if set(rejected_ids) != candidate_ids - {selected_id}:
+            raise ValueError("every non-winning candidate must be recorded as rejected")
+        if [item.rank for item in self.rejected_concepts] != list(
+            range(2, len(self.big_idea_candidates) + 1)
+        ):
+            raise ValueError("rejected concepts must preserve deterministic ranking")
         failed = self.quality_gate.failures
         if failed:
             raise ValueError(
@@ -285,6 +345,11 @@ class CreativeDirection(CreativeDirectorLLMOutput):
                 )
             )
         return self
+
+    @property
+    def selected_big_idea_id(self) -> str:
+        """Compatibility accessor; persisted output uses `winning_concept`."""
+        return self.winning_concept.candidate_id
 
 
 def _text(value: str) -> str:
@@ -310,6 +375,7 @@ def _require_unique(values: list[str], name: str) -> None:
 
 __all__ = [
     "QUALITY_THRESHOLDS",
+    "CONCEPT_SELECTION_DIMENSIONS",
     "BigIdeaCandidate",
     "CreativeAngle",
     "CreativeDirection",
@@ -319,5 +385,7 @@ __all__ = [
     "CreativeQualityGate",
     "CreativeTerritory",
     "QualityCheck",
+    "RejectedConcept",
     "VisualHook",
+    "WinningConcept",
 ]

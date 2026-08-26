@@ -431,17 +431,24 @@ is checked link by link. Each link must interpret the one above it and introduce
 something that step did not contain, so a chain of synonyms cannot pass as
 reasoning.
 
-Scoring is held to the same standard. Each candidate is scored one to ten on
-strategy fit, originality, territory differentiation, visual potential, claim
-safety, concept-hook alignment and production readiness, and must name its own
-weakness. A flawless card and two identical cards are both rejected: an
-evaluation that separates nothing decides nothing. The application ranks by
-total and then by the dimensions that matter most, so the winner is always
-separated by a judgement rather than by list position, and the published
-rationale says what it beat the runner-up on. Before the direction is returned,
-the selected candidate is gated: strategy fit, originality, differentiation,
-visual potential and production readiness at eight, concept-hook alignment at
-nine, claim safety at ten. Below the bar the run fails rather than shipping.
+Scoring is held to the same standard. Each candidate is scored one to ten on the
+eight selection dimensions: strategy fit, audience fit, brand fit, originality,
+clarity, visual potential, platform fit and production feasibility. Ticket 24's
+territory differentiation, claim safety and concept-hook alignment remain
+quality gates rather than silently changing the ranking. Every candidate names
+its own weakness. A flawless card and two identical selection cards are both
+rejected: an evaluation that separates nothing decides nothing. The application
+ranks by the eight-dimension total and deterministic dimension priority, so the
+winner is always separated by a judgement rather than by list position.
+
+The persisted output publishes `winning_concept` plus every non-winner under
+`rejected_concepts`, retaining rank, total score, weakness and a comparison-based
+rejection reason. Before generation, the stage retrieves only project-scoped
+`rejected_concept` semantic memories and supplies them as anti-repetition
+context. After selection, every losing route is stored through the semantic
+memory service; concept language is embedded, while generation/candidate IDs and
+scorecards stay JSON metadata. Worker retries are idempotent because the same
+partition, kind and semantic content share one memory record.
 
 Quality gates reject renamed versions of the same route, close paraphrases of
 the approved strategy wording, stock product shots offered as hooks, and

@@ -19,6 +19,10 @@ from app.modules.posts.orchestration.supervisor import (
     SupervisorStageResult,
 )
 from app.modules.posts.providers import ProviderBundle
+from app.modules.posts.services.concept_memory import (
+    ConceptMemoryService,
+    PostMemoryScopeResolver,
+)
 from app.modules.posts.tools import ToolRegistry
 from app.modules.posts.tools.research import ExternalResearchResult
 
@@ -31,12 +35,33 @@ class CreativeDirectionStageHandler:
         providers: ProviderBundle,
         *,
         trace_recorder: ExecutionTraceRecorder | None = None,
+        concept_memory: ConceptMemoryService | None = None,
+        memory_scope_resolver: PostMemoryScopeResolver | None = None,
     ) -> None:
+        if (concept_memory is None) != (memory_scope_resolver is None):
+            raise ValueError(
+                "concept_memory and memory_scope_resolver must be configured together"
+            )
         self._providers = providers
         self._trace_recorder = trace_recorder
+        self._concept_memory = concept_memory
+        self._memory_scope_resolver = memory_scope_resolver
 
     async def execute(self, context: SupervisorStageContext) -> SupervisorStageResult:
         payload = _agent_payload(context.workflow_state)
+        memory_scope = None
+        if self._concept_memory is not None and self._memory_scope_resolver is not None:
+            memory_scope = await self._memory_scope_resolver.resolve_project_scope(
+                post_id=context.post_id
+            )
+            if memory_scope is None:
+                raise ValueError("creative concept memory scope could not resolve the post")
+            payload["rejected_concept_memory"] = list(
+                await self._concept_memory.recall_rejected(
+                    scope=memory_scope,
+                    query=_memory_query(payload),
+                )
+            )
         invocation = InvocationContext(
             correlation_id=context.job_id,
             post_id=context.post_id,
@@ -61,6 +86,12 @@ class CreativeDirectionStageHandler:
         )
         if not isinstance(output, CreativeDirection):
             raise TypeError("creative director returned an invalid output type")
+        if self._concept_memory is not None and memory_scope is not None:
+            await self._concept_memory.remember_rejected(
+                scope=memory_scope,
+                direction=output,
+                generation_id=context.generation_id,
+            )
         return SupervisorStageResult(
             outputs={PostWorkflowSection.CREATIVE_CONCEPT: output.model_dump(mode="json")}
         )
@@ -86,6 +117,20 @@ def _agent_payload(workflow_state: dict[str, Any]) -> dict[str, Any]:
         ).model_dump(mode="json"),
         "semantic_contract": contract.to_dict(),
     }
+
+
+def _memory_query(payload: dict[str, Any]) -> str:
+    strategy = payload["marketing_strategy"]
+    brand = payload["brand"]
+    contract = payload["semantic_contract"]
+    return " ".join(
+        (
+            str(strategy["marketing_angle"]["decision"]),
+            str(strategy["single_minded_message"]["decision"]),
+            str(brand["identity_summary"]),
+            str(contract["platform"]),
+        )
+    )
 
 
 __all__ = ["CreativeDirectionStageHandler"]

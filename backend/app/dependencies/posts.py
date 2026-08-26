@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.dependencies.providers import get_provider_bundle
+from app.infrastructure.database.repositories.post_memory_scope import (
+    SQLAlchemyPostMemoryScopeResolver,
+)
 from app.infrastructure.database.repositories.posts import SQLAlchemyPostRepository
 from app.infrastructure.database.repositories.semantic_memory import (
     SQLAlchemySemanticMemoryRepository,
@@ -13,7 +16,7 @@ from app.infrastructure.database.repositories.semantic_memory import (
 from app.infrastructure.database.session import get_db_transaction
 from app.modules.posts.domain.entities import PostScope
 from app.modules.posts.providers import ProviderBundle
-from app.modules.posts.services import PostsService, SemanticMemoryService
+from app.modules.posts.services import ConceptMemoryService, PostsService, SemanticMemoryService
 
 
 def get_post_scope(
@@ -44,9 +47,25 @@ def get_semantic_memory_service(
     )
 
 
+def get_concept_memory_service(
+    semantic_memory: Annotated[SemanticMemoryService, Depends(get_semantic_memory_service)],
+) -> ConceptMemoryService:
+    return ConceptMemoryService(semantic_memory)
+
+
+def get_post_memory_scope_resolver(
+    session: Annotated[AsyncSession, Depends(get_db_transaction)],
+) -> SQLAlchemyPostMemoryScopeResolver:
+    return SQLAlchemyPostMemoryScopeResolver(session)
+
+
 PostScopeDependency = Annotated[PostScope, Depends(get_post_scope)]
 PostsServiceDependency = Annotated[PostsService, Depends(get_posts_service)]
 SemanticMemoryServiceDependency = Annotated[
     SemanticMemoryService,
     Depends(get_semantic_memory_service),
+]
+ConceptMemoryServiceDependency = Annotated[
+    ConceptMemoryService,
+    Depends(get_concept_memory_service),
 ]

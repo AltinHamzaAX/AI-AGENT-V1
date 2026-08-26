@@ -17,6 +17,7 @@ from typing import Any
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
 
 from .schemas import (
+    CONCEPT_SELECTION_DIMENSIONS,
     QUALITY_THRESHOLDS,
     BigIdeaCandidate,
     CreativeDirectorInput,
@@ -101,15 +102,7 @@ _VARIETY_RATIO = 0.82
 _MINIMUM_NEW_CONCEPTS = 2
 #: Compared in this order when totals tie, so a winner is never picked by
 #: position in the list.
-_SELECTION_PRIORITY = (
-    "claim_safety",
-    "concept_hook_alignment",
-    "originality",
-    "territory_differentiation",
-    "strategy_fit",
-    "visual_potential",
-    "production_readiness",
-)
+_SELECTION_PRIORITY = CONCEPT_SELECTION_DIMENSIONS
 #: The strategy is the brief, not the wording. A Big Idea that lands close to
 #: any of these has summarized the strategy instead of interpreting it.
 STRATEGY_SOURCE_WORDING = (
@@ -226,7 +219,7 @@ def _ranking_key(candidate: BigIdeaCandidate) -> tuple[int, ...]:
     which validation already rejects. The winner is therefore always separated
     by a judgement a reviewer can argue with, never by list position.
     """
-    scores = candidate.evaluation.scores()
+    scores = candidate.evaluation.selection_scores()
     return (
         -candidate.evaluation.total,
         *(-scores[dimension] for dimension in _SELECTION_PRIORITY),
@@ -251,8 +244,8 @@ def selection_rationale(
     hook: VisualHook,
 ) -> str:
     """Say why this one won, in terms the loser can be compared against."""
-    selected_scores = selected.evaluation.scores()
-    runner_scores = runner_up.evaluation.scores()
+    selected_scores = selected.evaluation.selection_scores()
+    runner_scores = runner_up.evaluation.selection_scores()
     leads = [
         f"{dimension.replace('_', ' ')} {selected_scores[dimension]} versus "
         f"{runner_scores[dimension]}"
@@ -265,8 +258,8 @@ def selection_rationale(
         else f"It carries the strongest overall scorecard against {runner_up.name}."
     )
     return _clip(
-        f"Selected {selected.name} at {selected.evaluation.total}/70 over "
-        f"{runner_up.name} at {runner_up.evaluation.total}/70. {comparison} "
+        f"Selected {selected.name} at {selected.evaluation.total}/80 over "
+        f"{runner_up.name} at {runner_up.evaluation.total}/80. {comparison} "
         f"It is the least generic route because it enters through "
         f"{territory.angle.value.replace('_', ' ')} rather than restating the offer. "
         f"It works the primary tension: {_sentence(territory.creative_tension)} "
@@ -477,7 +470,7 @@ def _validate_big_ideas(
 def _validate_scorecards(exploration: CreativeDirectorLLMOutput, errors: list[str]) -> None:
     """Scoring only earns its place when it separates the candidates."""
     vectors = [
-        tuple(candidate.evaluation.scores().values())
+        tuple(candidate.evaluation.selection_scores().values())
         for candidate in exploration.big_idea_candidates
     ]
     if len(set(vectors)) != len(vectors):
