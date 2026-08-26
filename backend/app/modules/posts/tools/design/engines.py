@@ -98,6 +98,7 @@ class VisualHierarchyPlanner:
         LayoutRole.OFFER,
         LayoutRole.CTA,
         LayoutRole.LOGO,
+        LayoutRole.LEGAL,
     )
 
     def priorities(self, roles: Iterable[LayoutRole]) -> dict[LayoutRole, int]:
@@ -185,6 +186,8 @@ def _region_map(spec: DesignSpec) -> dict[LayoutRole, Bounds]:
     }
     if regions.offer_region is not None:
         result[LayoutRole.OFFER] = regions.offer_region
+    if regions.legal_region is not None:
+        result[LayoutRole.LEGAL] = regions.legal_region
     return result
 
 

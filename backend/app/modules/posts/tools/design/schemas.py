@@ -14,6 +14,7 @@ class LayoutRole(StrEnum):
     OFFER = "offer"
     CTA = "cta"
     LOGO = "logo"
+    LEGAL = "legal"
 
 
 class Alignment(StrEnum):
@@ -96,7 +97,7 @@ class LayoutPlan(BaseModel):
     canvas: Canvas
     safe_bounds: Bounds
     grid: GridGeometry
-    placements: list[LayoutPlacement] = Field(min_length=4, max_length=5)
+    placements: list[LayoutPlacement] = Field(min_length=4, max_length=6)
     spacing: list[SpacingRelation]
     principles: LayoutPrinciples
     source_design_spec_version: str
