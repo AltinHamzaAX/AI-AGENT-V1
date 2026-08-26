@@ -541,6 +541,22 @@ Invalid structured output receives one complete repair pass and then fails
 closed. The compiler emits neither rendered assets nor CSS, SVG, image prompts
 or final composition, and it has no tools.
 
+## Layout engine
+
+The deterministic design toolset converts a validated `DesignSpec` into a
+versioned `LayoutPlan`. `SafeAreaEngine` clamps protected content,
+`GridEngine` produces concrete track lines and snaps bounds, `SpacingEngine`
+enforces baseline rhythm, and `VisualHierarchyPlanner` assigns stable priority
+and visual flow. `LayoutEngine` coordinates those tools without an LLM call or
+mutation of the source specification.
+
+Every placement exposes pixel `x`, `y`, `width`, `height`, alignment, priority,
+z-index and machine-readable constraints. The plan also records spacing
+relations and measurable alignment, balance, whitespace, scale, rhythm,
+proximity, Gestalt grouping, focal point and visual flow. Product may use the
+canvas edge; headline, offer, CTA and logo remain inside the safe area. This is
+layout planning only and does not render or generate production assets.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a
