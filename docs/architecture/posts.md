@@ -557,6 +557,22 @@ proximity, Gestalt grouping, focal point and visual flow. Product may use the
 canvas edge; headline, offer, CTA and logo remain inside the safe area. This is
 layout planning only and does not render or generate production assets.
 
+## Typography engine
+
+Typography is deterministic and never delegated to an image model. The
+`TypographyEngine` combines approved copy, typography roles, color tokens and
+the concrete LayoutPlan. It outputs exact text blocks with family token, weight,
+font size, line height, letter spacing, line breaks, maximum lines, measured
+text width, alignment, priority, bounds, contrast ratio and fit status.
+
+Headline, subheadline and supporting copy share the planned headline group;
+offer, CTA and optional legal text use dedicated regions. The fitter preserves
+copy exactly and reduces size only down to role-specific readability floors.
+WCAG-style contrast thresholds are applied to normal and large text. Overflow,
+unavailable fonts, overlap, clipping, unreadable contrast and text outside the
+safe area are hard failures. The engine is pure and repeatable: it calls no
+provider, performs no rendering and does not mutate DesignSpec or LayoutPlan.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a

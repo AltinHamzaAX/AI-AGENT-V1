@@ -19,13 +19,26 @@ from .schemas import (
     LayoutRole,
     SpacingRelation,
 )
+from .typography import (
+    TYPOGRAPHY_PLAN_SCHEMA_VERSION,
+    FitStatus,
+    TextBlock,
+    TextRole,
+    TypographyEngine,
+    TypographyHardFailure,
+    TypographyInput,
+    TypographyLayoutError,
+    TypographyPlan,
+)
 
 __all__ = [
     "LAYOUT_PLAN_SCHEMA_VERSION",
+    "TYPOGRAPHY_PLAN_SCHEMA_VERSION",
     "Alignment",
     "ConstraintKind",
     "GridEngine",
     "GridGeometry",
+    "FitStatus",
     "LayoutConstraint",
     "LayoutEngine",
     "LayoutPlacement",
@@ -35,5 +48,12 @@ __all__ = [
     "SafeAreaEngine",
     "SpacingEngine",
     "SpacingRelation",
+    "TextBlock",
+    "TextRole",
+    "TypographyEngine",
+    "TypographyHardFailure",
+    "TypographyInput",
+    "TypographyLayoutError",
+    "TypographyPlan",
     "VisualHierarchyPlanner",
 ]

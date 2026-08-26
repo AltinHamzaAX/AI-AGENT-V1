@@ -47,15 +47,17 @@ class RegionSet(BaseModel):
     offer_region: Bounds | None = None
     cta_region: Bounds
     logo_region: Bounds
+    legal_region: Bounds | None = None
 
 
 class TypographyRole(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    role: Literal["headline", "subheadline", "supporting_copy", "offer", "cta"]
+    role: Literal["headline", "subheadline", "supporting_copy", "offer", "cta", "legal"]
     family_token: str = Field(min_length=1, max_length=100)
     weight: int = Field(ge=100, le=900, multiple_of=100)
     size_px: int = Field(ge=8, le=320)
     line_height: float = Field(ge=0.8, le=2.5)
+    letter_spacing_px: float = Field(default=0, ge=-5, le=20)
     max_lines: int = Field(ge=1, le=12)
     align: Literal["left", "center", "right"]
 
@@ -124,6 +126,8 @@ class DesignSpecBody(BaseModel):
         }
         if self.regions.offer_region is not None:
             named["offer"] = self.regions.offer_region
+        if self.regions.legal_region is not None:
+            named["legal"] = self.regions.legal_region
         for name, bounds in named.items():
             if (
                 bounds.x + bounds.width > self.canvas.width
