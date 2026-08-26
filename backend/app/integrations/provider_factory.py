@@ -37,8 +37,11 @@ def create_provider_bundle(settings: Settings | None = None) -> ProviderBundle:
         "research": _name(configured.research_provider, capability="research"),
         "storage": _name(configured.storage_provider, capability="storage"),
     }
+    # Traces name the model from the response itself, so a separate creative
+    # model needs no entry here: `names` maps capability to provider.
     return ProviderBundle(
         llm=create_llm_provider(configured),
+        creative_llm_override=create_creative_llm_provider(configured),
         vision=create_vision_provider(configured),
         image=create_image_provider(configured),
         embedding=create_embedding_provider(configured),
@@ -57,6 +60,28 @@ def create_llm_provider(settings: Settings | None = None) -> LLMProvider:
         return OllamaLLMProvider(
             base_url=configured.ollama_base_url,
             model=_model(configured.llm_model, capability="LLM"),
+            timeout_seconds=configured.provider_timeout_seconds,
+        )
+    raise _unsupported("LLM", name)
+
+
+def create_creative_llm_provider(settings: Settings | None = None) -> LLMProvider | None:
+    """The stronger model for inventive stages, or None when none is configured.
+
+    None rather than a duplicate of the default provider, so the bundle can say
+    truthfully whether this deployment separates the two.
+    """
+    configured = settings or get_settings()
+    model = configured.creative_llm_model.strip()
+    if not model or model == configured.llm_model.strip():
+        return None
+    name = _name(configured.llm_provider, capability="LLM")
+    if name == "mock":
+        return MockLLMProvider()
+    if name == "ollama":
+        return OllamaLLMProvider(
+            base_url=configured.ollama_base_url,
+            model=model,
             timeout_seconds=configured.provider_timeout_seconds,
         )
     raise _unsupported("LLM", name)
@@ -155,6 +180,7 @@ def _unsupported(capability: str, provider: str) -> ProviderConfigurationError:
 
 
 __all__ = [
+    "create_creative_llm_provider",
     "create_embedding_provider",
     "create_image_provider",
     "create_llm_provider",

@@ -60,6 +60,35 @@ def _settings(**overrides: object) -> Settings:
     return Settings(_env_file=None, **values)  # type: ignore[arg-type]
 
 
+def test_inventive_stages_share_the_default_model_until_one_is_configured() -> None:
+    """One model everywhere is the supported deployment, not a degraded one."""
+    providers = create_provider_bundle(_settings(llm_provider="ollama", llm_model="small"))
+
+    assert providers.creative_llm_override is None
+    assert providers.creative_llm is providers.llm
+
+
+def test_naming_the_same_model_twice_does_not_build_a_second_provider() -> None:
+    providers = create_provider_bundle(
+        _settings(llm_provider="ollama", llm_model="same", creative_llm_model="  same  ")
+    )
+
+    assert providers.creative_llm_override is None
+    assert providers.creative_llm is providers.llm
+
+
+def test_a_configured_creative_model_is_built_only_for_the_inventive_stages() -> None:
+    providers = create_provider_bundle(
+        _settings(llm_provider="ollama", llm_model="small", creative_llm_model="large")
+    )
+
+    # The adapter keeps its model private; the choice it was built with is the
+    # whole point of this setting, so the test reads it directly.
+    assert providers.llm._model == "small"
+    assert providers.creative_llm._model == "large"
+    assert providers.creative_llm is not providers.llm
+
+
 @pytest.mark.asyncio
 async def test_config_can_switch_every_capability_to_mock_provider() -> None:
     providers = create_provider_bundle(_settings())
@@ -173,6 +202,35 @@ async def test_ollama_adapters_use_provider_neutral_contracts() -> None:
     assert vision_response.data == {"objects": ["product"]}
     assert requests[1]["messages"][0]["images"] == [base64.b64encode(b"binary").decode("ascii")]
     assert embedding_response.vectors == ((0.1, 0.2), (0.3, 0.4))
+
+
+@pytest.mark.asyncio
+async def test_llm_calls_ask_for_the_answer_not_the_model_s_private_reasoning() -> None:
+    """Reasoning belongs in the output, where validation can hold it to something."""
+    payloads: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        return httpx.Response(
+            200,
+            json={
+                "model": payload["model"],
+                "message": {"role": "assistant", "content": "{}"},
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        llm = OllamaLLMProvider(base_url="http://ollama.test", model="qwen", client=client)
+        await llm.complete(
+            LLMRequest(
+                messages=(LLMMessage(role="user", content="brief"),),
+                response_format="json",
+            )
+        )
+
+    assert payloads[0]["think"] is False
+    assert payloads[0]["format"] == "json"
 
 
 @pytest.mark.asyncio
