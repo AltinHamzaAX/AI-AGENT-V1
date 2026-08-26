@@ -1,5 +1,17 @@
 """Deterministic layout and design tools."""
 
+from .color import (
+    COLOR_PLAN_SCHEMA_VERSION,
+    ColorContrastEngine,
+    ColorEngineError,
+    ColorEngineInput,
+    ColorHardFailure,
+    ColorPlan,
+    ContrastCheck,
+    GradientRequest,
+    ProductSeparation,
+    ResolvedGradient,
+)
 from .engines import (
     GridEngine,
     LayoutEngine,
@@ -32,12 +44,20 @@ from .typography import (
 )
 
 __all__ = [
+    "COLOR_PLAN_SCHEMA_VERSION",
     "LAYOUT_PLAN_SCHEMA_VERSION",
     "TYPOGRAPHY_PLAN_SCHEMA_VERSION",
     "Alignment",
+    "ColorContrastEngine",
+    "ColorEngineError",
+    "ColorEngineInput",
+    "ColorHardFailure",
+    "ColorPlan",
     "ConstraintKind",
+    "ContrastCheck",
     "GridEngine",
     "GridGeometry",
+    "GradientRequest",
     "FitStatus",
     "LayoutConstraint",
     "LayoutEngine",
@@ -45,6 +65,8 @@ __all__ = [
     "LayoutPlan",
     "LayoutPrinciples",
     "LayoutRole",
+    "ProductSeparation",
+    "ResolvedGradient",
     "SafeAreaEngine",
     "SpacingEngine",
     "SpacingRelation",
