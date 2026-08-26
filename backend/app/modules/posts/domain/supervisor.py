@@ -223,6 +223,7 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
             SupervisorStage.DESIGN_SPEC,
             dependencies=(SupervisorStage.COPYWRITING, SupervisorStage.ART_DIRECTION),
             required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
                 PostWorkflowSection.COPY,
                 PostWorkflowSection.ART_DIRECTION,
             ),
