@@ -14,6 +14,12 @@ from app.modules.posts.domain.enums import (
     PostWorkflowSection,
 )
 from app.modules.posts.domain.jobs import GenerationJob
+from app.modules.posts.domain.memory import (
+    SemanticMemory,
+    SemanticMemoryKind,
+    SemanticMemoryMatch,
+    SemanticMemoryScope,
+)
 from app.modules.posts.domain.observability import ExecutionTrace
 from app.modules.posts.domain.state import (
     PostGenerationState,
@@ -150,6 +156,35 @@ class GenerationJobRepository(Protocol):
         worker_id: str,
         lease_seconds: int,
     ) -> GenerationJob | None: ...
+
+
+class SemanticMemoryRepository(Protocol):
+    @property
+    def embedding_dimension(self) -> int: ...
+
+    async def upsert(
+        self,
+        *,
+        memory_id: UUID,
+        scope: SemanticMemoryScope,
+        kind: SemanticMemoryKind,
+        content: str,
+        content_hash: str,
+        embedding: tuple[float, ...],
+        embedding_provider: str,
+        embedding_model: str,
+        metadata: dict[str, Any],
+    ) -> SemanticMemory: ...
+
+    async def search(
+        self,
+        *,
+        scope: SemanticMemoryScope,
+        query_embedding: tuple[float, ...],
+        kinds: tuple[SemanticMemoryKind, ...],
+        limit: int,
+        min_similarity: float,
+    ) -> Sequence[SemanticMemoryMatch]: ...
 
     async def complete(self, *, job_id: UUID, worker_id: str) -> GenerationJob | None: ...
 
