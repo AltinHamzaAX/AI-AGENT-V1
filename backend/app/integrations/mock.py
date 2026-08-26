@@ -61,7 +61,10 @@ class MockEmbeddingProvider:
 
     def _vector(self, text: str) -> tuple[float, ...]:
         digest = hashlib.sha256(text.encode()).digest()
-        return tuple((digest[index] / 127.5) - 1.0 for index in range(self._dimension))
+        return tuple(
+            (digest[index % len(digest)] / 127.5) - 1.0
+            for index in range(self._dimension)
+        )
 
 
 class MockResearchProvider:
