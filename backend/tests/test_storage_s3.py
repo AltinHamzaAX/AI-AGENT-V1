@@ -8,6 +8,7 @@ from botocore.config import Config
 
 from app.core.config import get_settings
 from app.infrastructure.storage.s3 import S3Storage
+from app.modules.posts.providers import StorageObjectNotFoundError
 
 TEST_S3_ENDPOINT = os.getenv("TEST_S3_ENDPOINT")
 pytestmark = pytest.mark.skipif(
@@ -47,8 +48,12 @@ async def test_s3_adapter_puts_and_deletes_minio_object() -> None:
         assert body == b"ticket-04-storage-probe"
         assert response["ContentType"] == "text/plain"
         assert response["Metadata"] == {"purpose": "integration-test"}
+        assert await storage.get(key=key) == b"ticket-04-storage-probe"
     finally:
         await storage.delete(key=key)
+
+    with pytest.raises(StorageObjectNotFoundError):
+        await storage.get(key=key)
 
     with pytest.raises(client.exceptions.NoSuchKey):
         await asyncio.to_thread(

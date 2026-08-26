@@ -7,7 +7,7 @@ from uuid import UUID
 
 from app.modules.posts.domain.enums import PostWorkflowSection
 
-WORKFLOW_STATE_SCHEMA_VERSION = 2
+WORKFLOW_STATE_SCHEMA_VERSION = 3
 OBJECT_SECTIONS = frozenset(PostWorkflowSection) - {
     PostWorkflowSection.ASSETS,
     PostWorkflowSection.GENERATION_ARTIFACTS,

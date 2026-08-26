@@ -468,7 +468,7 @@ async def test_generation_workflow_state_is_complete_versioned_and_persistent(
     initial = await post_client.get(base_path, headers=headers)
     assert initial.status_code == 200
     assert initial.json()["version"] == 1
-    assert initial.json()["schema_version"] == 2
+    assert initial.json()["schema_version"] == 3
     assert initial.json()["state"] == {
         "supervisor": {},
         "conversation_context": {},
@@ -486,6 +486,7 @@ async def test_generation_workflow_state_is_complete_versioned_and_persistent(
         "design_spec": {},
         "generation_plan": {},
         "generation_artifacts": [],
+        "post_draft": {},
         "quality": {},
         "revision_history": [],
     }
