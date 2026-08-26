@@ -20,6 +20,7 @@ from app.modules.posts.orchestration.supervisor import (
 )
 from app.modules.posts.providers import ProviderBundle
 from app.modules.posts.tools import ToolRegistry
+from app.modules.posts.tools.marketing import register_marketing_framework_tools
 from app.modules.posts.tools.research import ExternalResearchResult
 
 
@@ -49,8 +50,10 @@ class MarketingStrategyStageHandler:
                 recorder=self._trace_recorder,
                 invocation=invocation,
             )
+        tool_registry = ToolRegistry(trace_recorder=self._trace_recorder)
+        register_marketing_framework_tools(tool_registry)
         runtime = AgentRuntime(
-            ToolRegistry(trace_recorder=self._trace_recorder),
+            tool_registry,
             trace_recorder=self._trace_recorder,
         )
         register_marketing_strategist_agent(runtime, providers.llm)
