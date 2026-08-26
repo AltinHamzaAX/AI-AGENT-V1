@@ -592,6 +592,25 @@ approved, composed solely of approved/resolved palette colors, and its reason is
 grounded in the supplied objective or mood. “Looks modern” is not a valid design
 reason. The engine is deterministic and invokes no image or text provider.
 
+## Generation planning
+
+`GenerationPlanner` is the deterministic gate before any image-provider call.
+It inventories classified assets and explicitly records what is available,
+missing, identity-protected and permitted to be generated. The stage reads the
+semantic contract, DesignSpec and asset policies, then writes only the
+`generation_plan` workflow section.
+
+When a useful focal visual and background already exist, the decision is
+`COMPOSE_ONLY` with zero image calls. A useful visual without a background yields
+`GENERATE_BACKGROUND`; the original product and logo remain composition assets.
+When no useful visual exists, `GENERATE_SCENE` creates only unbranded scene
+context. Generated promotional text, headline, offer/price, CTA, logos,
+watermarks and replacement products are prohibited in every generation task.
+
+The plan records the estimated image calls and cost tier, making fidelity,
+latency and cost consequences visible before production. Planning invokes no AI
+provider and is repeatable for identical state.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a
