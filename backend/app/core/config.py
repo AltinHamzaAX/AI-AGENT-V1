@@ -53,6 +53,9 @@ class Settings(BaseSettings):
 
     llm_provider: str = ""
     llm_model: str = ""
+    #: The stages that invent rather than extract. Empty means they share
+    #: LLM_MODEL; a larger model here costs nothing on the other stages.
+    creative_llm_model: str = ""
     ollama_base_url: str = "http://host.docker.internal:11434"
     image_provider: str = ""
     image_model: str = ""

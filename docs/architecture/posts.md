@@ -387,6 +387,67 @@ later stage inherits the uncertainty rather than only the decisions. Forbidden
 claims fail the whole strategy, and copy, headlines, art direction and design
 remain out of scope: this stage produces the thinking that later stages execute.
 
+## Creative Direction
+
+The Creative Director converts an approved marketing strategy into exploration,
+not a final poster. It reads the marketing strategy, audience intelligence,
+brand analysis, research and semantic contract. All five contract fingerprints
+must agree before the provider is called, and its only workflow write is
+`creative_concept`.
+
+Each run produces three to five creative territories, visual hooks and Big Idea
+candidates. Every territory declares the angle it enters through — emotional
+transformation, visual metaphor, cultural tension, product demonstration or
+brand symbol — and no two may share one, because three renamings of the same
+promise are one route wearing three names. A visual hook carries a symbol and a
+wordless read: what the image says with every word removed. A Big Idea names one
+territory and one hook, states what it adds to each, and lists the further
+executions it would carry; an idea that only supports the post in front of it is
+an advertisement.
+
+The chain from audience tension to marketing angle, territory, Big Idea and hook
+is checked link by link. Each link must interpret the one above it and introduce
+something that step did not contain, so a chain of synonyms cannot pass as
+reasoning.
+
+Scoring is held to the same standard. Each candidate is scored one to ten on
+strategy fit, originality, territory differentiation, visual potential, claim
+safety, concept-hook alignment and production readiness, and must name its own
+weakness. A flawless card and two identical cards are both rejected: an
+evaluation that separates nothing decides nothing. The application ranks by
+total and then by the dimensions that matter most, so the winner is always
+separated by a judgement rather than by list position, and the published
+rationale says what it beat the runner-up on. Before the direction is returned,
+the selected candidate is gated: strategy fit, originality, differentiation,
+visual potential and production readiness at eight, concept-hook alignment at
+nine, claim safety at ten. Below the bar the run fails rather than shipping.
+
+Quality gates reject renamed versions of the same route, close paraphrases of
+the approved strategy wording, stock product shots offered as hooks, and
+audience-facing advertising copy disguised as a concept. Unsupported absolute or
+numeric claims, forbidden claims, identity replacement and competitor copying
+fail closed. Sanitization after a local-model repair drops whole sentences
+rather than deleting words in place, because a field edited token by token comes
+back safe and meaningless; a field with nothing sayable left comes back empty
+and fails the run instead of shipping a placeholder. Every repaired output faces
+the full bar again, including the gate, so nothing is waived for being a repair.
+Small serialization drift, such as detached scorecards or renamed fields, is
+normalized without rewriting creative content or choosing a territory's angle
+for the provider.
+
+This is the first stage that invents rather than extracts. Every earlier stage
+answers to evidence placed in front of it, which a small model does well; a Big
+Idea has nothing to read off. `CREATIVE_LLM_MODEL` points this stage at a
+stronger model, and left empty every stage shares `LLM_MODEL`. The bundle
+carries the second provider so the choice stays a deployment decision: no agent
+selects its own model, and traces name the model from the response either way.
+
+The boundary to downstream specialists is explicit. Split screens, overlays,
+animations, logo or tagline placement, headlines, captions, CTA copy, typography,
+dimensions, image prompts and final posters are not Creative Director output.
+The agent has no tools, approval capability or mutation capability; Copywriter,
+Art Director and production stages remain responsible for execution.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a

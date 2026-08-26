@@ -208,6 +208,11 @@ def trace_provider_bundle(
     )
     return ProviderBundle(
         llm=TracedLLMProvider(bundle.llm, trace),
+        creative_llm_override=(
+            None
+            if bundle.creative_llm_override is None
+            else TracedLLMProvider(bundle.creative_llm_override, trace)
+        ),
         vision=TracedVisionProvider(bundle.vision, trace),
         image=TracedImageProvider(bundle.image, trace),
         embedding=TracedEmbeddingProvider(bundle.embedding, trace),

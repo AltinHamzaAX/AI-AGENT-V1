@@ -323,6 +323,17 @@ async def test_invalid_first_output_gets_one_grounded_correction_pass() -> None:
     assert "previous_output" in correction
 
 
+def test_runtime_budget_covers_initial_generation_and_correction_pass() -> None:
+    from app.modules.posts.agents.marketing_strategist import (
+        MARKETING_STRATEGIST_DEFINITION,
+    )
+
+    assert MARKETING_STRATEGIST_DEFINITION.timeout_seconds == 300
+    assert MARKETING_STRATEGIST_DEFINITION.retry_policy.max_attempts == 2
+    assert MARKETING_STRATEGIST_DEFINITION.retry_policy.retry_on_timeout is True
+    assert MARKETING_STRATEGIST_DEFINITION.retry_policy.retry_on_error is True
+
+
 async def test_each_decision_answers_to_its_own_principle() -> None:
     """A targeting call labelled 'positioning' is a mislabelled targeting call."""
     payload = await _input()
@@ -497,11 +508,13 @@ async def test_the_single_minded_message_carries_one_idea() -> None:
         )
     )
 
-    with pytest.raises(ProviderResponseError):
-        await _run(payload, llm)
+    strategy = await _run(payload, llm)
+
+    assert strategy.single_minded_message.decision == "No waiting after landing."
+    assert any("deterministically focused" in item for item in strategy.limitations)
 
 
-async def test_one_sentence_with_multiple_promises_is_rejected() -> None:
+async def test_one_sentence_with_multiple_promises_is_focused() -> None:
     payload = await _input()
     llm = _StrategyLLM(
         single_minded_message=_decision(
@@ -511,11 +524,13 @@ async def test_one_sentence_with_multiple_promises_is_rejected() -> None:
         )
     )
 
-    with pytest.raises(ProviderResponseError):
-        await _run(payload, llm)
+    strategy = await _run(payload, llm)
+
+    assert strategy.single_minded_message.decision == "No waiting after landing."
+    assert len(llm.requests) == 1
 
 
-async def test_single_minded_message_cannot_cite_multiple_product_promises() -> None:
+async def test_single_minded_message_is_reduced_to_one_cited_product_promise() -> None:
     payload = await _input()
     pickup = payload.product.feature_benefit_value[0]
     product = payload.product.model_copy(
@@ -546,8 +561,15 @@ async def test_single_minded_message_cannot_cite_multiple_product_promises() -> 
         )
     )
 
-    with pytest.raises(ProviderResponseError):
-        await _run(payload, llm)
+    strategy = await _run(payload, llm)
+
+    assert strategy.single_minded_message.decision == "No waiting after landing."
+    product_basis = [
+        item
+        for item in strategy.single_minded_message.basis
+        if item.startswith("product.")
+    ]
+    assert product_basis == ["product.feature_benefit_value.pickup availability"]
 
 
 async def test_a_framework_may_be_declined() -> None:

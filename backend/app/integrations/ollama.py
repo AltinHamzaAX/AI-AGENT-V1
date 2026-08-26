@@ -69,6 +69,13 @@ class OllamaLLMProvider(_OllamaAdapter):
             "model": self._model,
             "messages": messages,
             "stream": False,
+            # Hybrid-reasoning models think before answering, and that thinking
+            # is discarded: it never reaches the caller and nothing can audit
+            # it. Every agent here is required to put its reasoning in the
+            # output instead - rationale, basis, weakness - where validation
+            # can hold it to something. Models without the capability accept
+            # the flag and ignore it.
+            "think": False,
             "options": {
                 "temperature": request.temperature,
                 # Ollama defaults to a 4k window and silently truncates anything
