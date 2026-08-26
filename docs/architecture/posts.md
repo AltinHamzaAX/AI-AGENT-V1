@@ -476,6 +476,29 @@ dimensions, image prompts and final posters are not Creative Director output.
 The agent has no tools, approval capability or mutation capability; Copywriter,
 Art Director and production stages remain responsible for execution.
 
+## Copywriting
+
+`CopywriterAgent` runs after concept selection and writes only the `copy` workflow
+section. It receives the approved marketing strategy, winning concept, brand
+voice, platform, offer and immutable semantic contract. Rejected concepts are
+deliberately excluded from its source: they inform future anti-repetition, not
+the copy for the selected route. Strategy, concept, brand and contract
+fingerprints must agree, while platform and offer must exactly match the
+semantic contract before a provider is called.
+
+The provider returns only headline, subheadline, supporting copy, optional offer
+copy, CTA, caption and optional hashtags. The application owns the final quality
+record and checks clarity, tone, length, grammar, claim validity, text density
+and mobile readability. Headline and CTA word counts, sentence length, caption
+limits, overlay density, capitalization, punctuation and hashtag shape are
+deterministic gates rather than model self-assessment.
+
+Approved offer wording is preserved exactly. Numeric claims, prices,
+percentages, guarantees, free benefits, superlatives, availability promises and
+forbidden claims must already exist upstream; otherwise the complete output is
+repaired once and then fails closed. Copywriting cannot emit layout, typography,
+logo placement, image prompts or any other Art Director or production field.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a

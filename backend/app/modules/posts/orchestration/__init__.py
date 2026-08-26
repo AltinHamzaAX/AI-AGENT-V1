@@ -10,6 +10,7 @@ from app.modules.posts.orchestration.brand_product import BrandProductStageHandl
 from app.modules.posts.orchestration.client_understanding import (
     ClientUnderstandingStageHandler,
 )
+from app.modules.posts.orchestration.copywriting import CopywritingStageHandler
 from app.modules.posts.orchestration.creative_direction import (
     CreativeDirectionStageHandler,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "BrandProductStageHandler",
     "ClientUnderstandingStageHandler",
     "CreativeDirectionStageHandler",
+    "CopywritingStageHandler",
     "ExternalResearchStageHandler",
     "MarketingStrategyStageHandler",
     "PostSupervisorExecutor",
