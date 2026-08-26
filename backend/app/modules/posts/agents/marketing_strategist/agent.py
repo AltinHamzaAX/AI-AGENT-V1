@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import unicodedata
@@ -16,6 +17,25 @@ from app.modules.posts.providers import (
     ProviderResponseError,
 )
 from app.modules.posts.tools import ToolGateway
+from app.modules.posts.tools.marketing import (
+    CTA_ENGINE,
+    FEATURE_BENEFIT_MAPPER,
+    MARKETING_FRAMEWORK_TOOL_NAMES,
+    MESSAGE_STRATEGY_ENGINE,
+    POSITIONING_BUILDER,
+    STP_ENGINE,
+    USP_EXTRACTOR,
+    VALUE_PROPOSITION_BUILDER,
+    CTAFrameResult,
+    DirectMarketingFrameworkGateway,
+    FeatureBenefitMapResult,
+    MarketingFrameworkContext,
+    MessageStrategyFrameResult,
+    PositioningFrameResult,
+    STPResult,
+    USPExtractionResult,
+    ValuePropositionFrameResult,
+)
 from app.modules.posts.tools.research import ResearchCategory
 
 from .schemas import (
@@ -34,7 +54,7 @@ MARKETING_STRATEGIST_DEFINITION = AgentDefinition(
     role="Decide marketing strategy from verified facts, audience intelligence and research",
     input_schema=MarketingStrategyInput,
     output_schema=MarketingStrategy,
-    allowed_tools=frozenset(),
+    allowed_tools=MARKETING_FRAMEWORK_TOOL_NAMES,
     # Everything this agent needs was gathered by earlier stages, so the whole
     # cost is one reasoning call over a large assembled context.
     timeout_seconds=180,
@@ -138,7 +158,7 @@ class MarketingStrategistAgent:
     async def execute(
         self,
         payload: BaseModel,
-        _gateway: ToolGateway,
+        gateway: ToolGateway,
         _context: AgentExecutionContext,
     ) -> MarketingStrategy:
         if not isinstance(payload, MarketingStrategyInput):
@@ -149,7 +169,9 @@ class MarketingStrategistAgent:
             raise ValueError("marketing strategist requires a valid semantic contract") from exc
         _require_one_contract(payload, contract)
 
+        framework = await _marketing_framework_context(payload, gateway)
         source, allowed_basis = _strategy_source(payload, contract)
+        source["marketing_framework_tools"] = framework.model_dump(mode="json")
         response = await self._complete(source, allowed_basis)
         try:
             return _validated_strategy(
@@ -215,6 +237,40 @@ class MarketingStrategistAgent:
 def register_marketing_strategist_agent(runtime: AgentRuntime, llm: LLMProvider) -> None:
     agent = MarketingStrategistAgent(llm)
     runtime.register(MARKETING_STRATEGIST_DEFINITION, agent.execute)
+
+
+async def _marketing_framework_context(
+    payload: MarketingStrategyInput,
+    gateway: ToolGateway | None,
+) -> MarketingFrameworkContext:
+    """Run independent deterministic frameworks in parallel before reasoning."""
+    active_gateway = gateway or DirectMarketingFrameworkGateway()
+    tool_input = {
+        "semantic_contract": payload.semantic_contract,
+        "product": payload.product.model_dump(mode="json"),
+        "audience": payload.audience.model_dump(mode="json"),
+    }
+    names = (
+        STP_ENGINE,
+        FEATURE_BENEFIT_MAPPER,
+        USP_EXTRACTOR,
+        POSITIONING_BUILDER,
+        VALUE_PROPOSITION_BUILDER,
+        MESSAGE_STRATEGY_ENGINE,
+        CTA_ENGINE,
+    )
+    outputs = await asyncio.gather(
+        *(active_gateway.invoke(name, tool_input) for name in names)
+    )
+    return MarketingFrameworkContext(
+        stp=STPResult.model_validate(outputs[0]),
+        feature_benefit=FeatureBenefitMapResult.model_validate(outputs[1]),
+        usp=USPExtractionResult.model_validate(outputs[2]),
+        positioning=PositioningFrameResult.model_validate(outputs[3]),
+        value_proposition=ValuePropositionFrameResult.model_validate(outputs[4]),
+        message_strategy=MessageStrategyFrameResult.model_validate(outputs[5]),
+        cta=CTAFrameResult.model_validate(outputs[6]),
+    )
 
 
 def _validated_strategy(
@@ -509,6 +565,10 @@ def _system_prompt(allowed_basis: set[str]) -> str:
         "EVERY DECISION NEEDS A RATIONALE. For each field give the decision itself, the reasoning "
         "that produced it, and one or more exact basis identifiers from this allowlist: "
         f"{basis}. A decision you cannot ground in that list is a decision you must not make. "
+        "marketing_framework_tools contains deterministic, grounded scaffolding from the STP, "
+        "positioning, feature-benefit, USP, value-proposition, message and CTA tools. Use it to "
+        "structure your reasoning, but make the final decisions yourself and cite only exact "
+        "identifiers from the allowlist. "
         "Each decision also has field-specific evidence requirements. Every inner list is an OR "
         "group and every group must be satisfied by copying ONE EXACT identifier from that list: "
         f"{basis_requirements}. These are concrete identifiers, never shorten them to a prefix "
@@ -518,11 +578,14 @@ def _system_prompt(allowed_basis: set[str]) -> str:
         "Targeting must name one of the supplied audience segments. The USP must descend from a "
         "supplied product usp_candidate or feature_benefit_value: it is what this product "
         "verifiably does better, never an appealing phrase. Follow the feature to benefit to "
-        "customer value chain rather than restating a feature. The value proposition states what "
+        "customer value chain rather than restating a feature. Positioning must combine the "
+        "chosen target with a verified differentiator; never return only the segment name. "
+        "The value proposition states what "
         "the target gains, in their terms. The customer insight is a truth about the customer, "
         "not about the product, and the customer tension must build on the supplied audience "
         "tension rather than invent a new one. The single-minded message must be ONE sentence "
-        "carrying ONE idea; if it needs an 'and', it is two messages and you must choose. The "
+        "with ONE product promise, carrying ONE idea; if it needs an 'and', it is two messages "
+        "and you must choose. The "
         "desired reaction is what the reader should think, feel or do next. The CTA strategy "
         "must serve the contract's cta_intent. "
         "Choose the message framework honestly: AIDA when attention must be earned before "
@@ -586,6 +649,12 @@ def _validate_strategy(
     targeting = decisions["targeting"]
     if not any(name in _semantic(targeting.decision) for name in segment_names):
         errors.append("targeting must name one of the supplied audience segments")
+    positioning_text = _semantic(decisions["positioning"].decision)
+    if positioning_text in segment_names:
+        errors.append(
+            "positioning must articulate a differentiated place in the target's mind, "
+            "not repeat the segment name"
+        )
 
     if not any(
         reference.startswith(_PRODUCT_EVIDENCE_PREFIXES) for reference in decisions["usp"].basis
@@ -602,6 +671,8 @@ def _validate_strategy(
     normalized_message = f" {_semantic(message)} "
     if any(marker in normalized_message for marker in _MULTI_PROMISE_MARKERS):
         errors.append("the single-minded message must not combine multiple promises")
+    if len(_product_promises_in_text(message, payload.product)) > 1:
+        errors.append("the single-minded message must use one product promise")
 
     errors.extend(_framework_basis_errors(strategy))
     try:
@@ -627,6 +698,27 @@ def _field_basis_errors(name: str, decision: StrategicDecision) -> list[str]:
         ):
             errors.append(f"{name} is missing required evidence: {alternatives}")
     return errors
+
+
+def _product_promises_in_text(message: str, product: Any) -> set[str]:
+    """Return distinct verified facts whose full promise appears in a message."""
+    normalized = _semantic(message)
+    promises: dict[str, set[str]] = {
+        chain.source_fact: {
+            _semantic(chain.feature),
+            _semantic(chain.benefit),
+            _semantic(chain.customer_value),
+        }
+        for chain in product.feature_benefit_value
+    }
+    for candidate in product.usp_candidates:
+        for source_fact in candidate.source_facts:
+            promises.setdefault(source_fact, set()).add(_semantic(candidate.text))
+    return {
+        source_fact
+        for source_fact, phrases in promises.items()
+        if any(phrase and phrase in normalized for phrase in phrases)
+    }
 
 
 def _basis_matches(reference: str, requirement: str) -> bool:

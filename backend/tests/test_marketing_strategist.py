@@ -427,6 +427,20 @@ async def test_targeting_must_name_a_supplied_segment() -> None:
         await _run(payload, llm)
 
 
+async def test_positioning_cannot_merely_repeat_the_segment_name() -> None:
+    payload = await _input()
+    llm = _StrategyLLM(
+        positioning=_decision(
+            "positioning",
+            decision=SEGMENT,
+            basis=[TARGET_BASIS, "product.usp_candidates.1"],
+        )
+    )
+
+    with pytest.raises(ProviderResponseError):
+        await _run(payload, llm)
+
+
 async def test_the_usp_must_descend_from_the_product() -> None:
     """A USP is what this product verifiably does better, not a good phrase."""
     payload = await _input()
@@ -494,6 +508,41 @@ async def test_one_sentence_with_multiple_promises_is_rejected() -> None:
             "single_minded_message",
             decision="Book now and get 24/7 airport pickup.",
             basis=["product.usp_candidates.1", "audience.customer_tension"],
+        )
+    )
+
+    with pytest.raises(ProviderResponseError):
+        await _run(payload, llm)
+
+
+async def test_single_minded_message_cannot_cite_multiple_product_promises() -> None:
+    payload = await _input()
+    pickup = payload.product.feature_benefit_value[0]
+    product = payload.product.model_copy(
+        update={
+            "feature_benefit_value": [
+                pickup,
+                pickup.model_copy(
+                    update={
+                        "source_fact": "vehicle class",
+                        "feature": "compact automatic car",
+                        "benefit": "easy city driving",
+                        "customer_value": "confidence on unfamiliar roads",
+                    }
+                ),
+            ]
+        }
+    )
+    payload = payload.model_copy(update={"product": product})
+    llm = _StrategyLLM(
+        single_minded_message=_decision(
+            "single_minded_message",
+            decision="Round-the-clock airport pickup and easy city driving.",
+            basis=[
+                "product.feature_benefit_value.pickup availability",
+                "product.feature_benefit_value.vehicle class",
+                "audience.customer_tension",
+            ],
         )
     )
 

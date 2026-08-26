@@ -372,6 +372,13 @@ carries neither; additive multi-promise forms are rejected as well. PAS requires
 a supplied pain point or tension, while AIDA requires both objective and audience
 context. Either may be declined, which is why "none" is a first-class answer.
 
+Seven read-only Marketing Strategist tools provide the reusable framework
+scaffolding: STP, positioning, feature-to-benefit mapping, USP extraction,
+value proposition, message strategy and CTA. They expose grounded options and
+constraints; the agent still owns each final decision and rationale. The tools
+run through the authorized registry, emit normal tool traces, reject semantic-
+contract drift and never mutate state or call an external provider.
+
 Assembling five upstream outputs is the first point where they could silently
 disagree, so every input's contract fingerprint is checked against the contract
 before any provider call. Evidence gaps travel with the strategy: audience

@@ -35,6 +35,7 @@ from app.modules.posts.agents.marketing_strategist import (  # noqa: E402
 )
 from app.modules.posts.domain.semantic_contract import PostSemanticContract  # noqa: E402
 from app.modules.posts.tools import ToolRegistry  # noqa: E402
+from app.modules.posts.tools.marketing import register_marketing_framework_tools  # noqa: E402
 from app.modules.posts.tools.research import (  # noqa: E402
     ExternalResearchInput,
     ExternalResearchResult,
@@ -237,7 +238,9 @@ async def _run(live_research: bool) -> None:
         research = _synthetic_research(contract)
         print("Research is synthetic; pass --live-research for the real stage.", flush=True)
 
-    runtime = AgentRuntime(ToolRegistry())
+    tool_registry = ToolRegistry()
+    register_marketing_framework_tools(tool_registry)
+    runtime = AgentRuntime(tool_registry)
     register_marketing_strategist_agent(runtime, providers.llm)
 
     print("Deciding strategy, 60-180s, no output until it answers...", flush=True)

@@ -1,1 +1,55 @@
-"""Future marketing tools."""
+"""Deterministic marketing-framework tools used by the Marketing Strategist."""
+
+from app.modules.posts.tools.marketing.schemas import (
+    CTAFrameResult,
+    EvidenceOption,
+    FeatureBenefitMapResult,
+    FeatureBenefitValueOption,
+    FrameworkKind,
+    MarketingFrameworkContext,
+    MarketingFrameworkInput,
+    MessageStrategyFrameResult,
+    PositioningFrameResult,
+    STPResult,
+    USPExtractionResult,
+    ValuePropositionFrameResult,
+)
+from app.modules.posts.tools.marketing.tools import (
+    CTA_ENGINE,
+    FEATURE_BENEFIT_MAPPER,
+    MARKETING_FRAMEWORK_TOOL_NAMES,
+    MESSAGE_STRATEGY_ENGINE,
+    POSITIONING_BUILDER,
+    STP_ENGINE,
+    USP_EXTRACTOR,
+    VALUE_PROPOSITION_BUILDER,
+    DirectMarketingFrameworkGateway,
+    marketing_framework_tool_definitions,
+    register_marketing_framework_tools,
+)
+
+__all__ = [
+    "CTA_ENGINE",
+    "FEATURE_BENEFIT_MAPPER",
+    "MARKETING_FRAMEWORK_TOOL_NAMES",
+    "MESSAGE_STRATEGY_ENGINE",
+    "POSITIONING_BUILDER",
+    "STP_ENGINE",
+    "USP_EXTRACTOR",
+    "VALUE_PROPOSITION_BUILDER",
+    "CTAFrameResult",
+    "DirectMarketingFrameworkGateway",
+    "EvidenceOption",
+    "FeatureBenefitMapResult",
+    "FeatureBenefitValueOption",
+    "FrameworkKind",
+    "MarketingFrameworkContext",
+    "MarketingFrameworkInput",
+    "MessageStrategyFrameResult",
+    "PositioningFrameResult",
+    "STPResult",
+    "USPExtractionResult",
+    "ValuePropositionFrameResult",
+    "marketing_framework_tool_definitions",
+    "register_marketing_framework_tools",
+]
