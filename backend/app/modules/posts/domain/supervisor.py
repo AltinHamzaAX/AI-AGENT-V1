@@ -29,6 +29,7 @@ class SupervisorStage(StrEnum):
     DESIGN_SPEC = "design_spec"
     GENERATION_PLANNING = "generation_planning"
     PRODUCTION = "production"
+    COMPOSITION = "composition"
     QUALITY_REVIEW = "quality_review"
 
 
@@ -253,9 +254,20 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
             output_sections=(PostWorkflowSection.GENERATION_ARTIFACTS,),
         ),
         SupervisorStagePolicy(
-            SupervisorStage.QUALITY_REVIEW,
+            SupervisorStage.COMPOSITION,
             dependencies=(SupervisorStage.PRODUCTION,),
-            required_sections=(PostWorkflowSection.GENERATION_ARTIFACTS,),
+            required_sections=(
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.ASSETS,
+                PostWorkflowSection.GENERATION_ARTIFACTS,
+            ),
+            output_sections=(PostWorkflowSection.POST_DRAFT,),
+        ),
+        SupervisorStagePolicy(
+            SupervisorStage.QUALITY_REVIEW,
+            dependencies=(SupervisorStage.COMPOSITION,),
+            required_sections=(PostWorkflowSection.POST_DRAFT,),
             output_sections=(PostWorkflowSection.QUALITY,),
         ),
     )

@@ -11,6 +11,11 @@ from app.modules.posts.orchestration.brand_product import BrandProductStageHandl
 from app.modules.posts.orchestration.client_understanding import (
     ClientUnderstandingStageHandler,
 )
+from app.modules.posts.orchestration.composition import (
+    CompositionInputResolver,
+    CompositionStageHandler,
+    WorkflowCompositionResolver,
+)
 from app.modules.posts.orchestration.copywriting import CopywritingStageHandler
 from app.modules.posts.orchestration.creative_direction import (
     CreativeDirectionStageHandler,
@@ -42,6 +47,8 @@ __all__ = [
     "AssetIntelligenceStageHandler",
     "BrandProductStageHandler",
     "ClientUnderstandingStageHandler",
+    "CompositionInputResolver",
+    "CompositionStageHandler",
     "CreativeDirectionStageHandler",
     "DesignSpecStageHandler",
     "CopywritingStageHandler",
@@ -56,4 +63,5 @@ __all__ = [
     "SupervisorStageContext",
     "SupervisorStageHandler",
     "SupervisorStageResult",
+    "WorkflowCompositionResolver",
 ]

@@ -3,8 +3,12 @@ import asyncio
 import boto3
 from botocore.client import BaseClient
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 from app.core.config import get_settings
+from app.modules.posts.providers import StorageObjectNotFoundError
+
+_MISSING_KEY_CODES = frozenset({"NoSuchKey", "404", "NotFound"})
 
 
 class S3Storage:
@@ -49,6 +53,20 @@ class S3Storage:
             ContentType=content_type,
             Metadata=metadata or {},
         )
+
+    async def get(self, *, key: str) -> bytes:
+        try:
+            response = await asyncio.to_thread(
+                self._client.get_object,
+                Bucket=self._bucket,
+                Key=key,
+            )
+        except ClientError as exc:
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            if code in _MISSING_KEY_CODES:
+                raise StorageObjectNotFoundError(f"object '{key}' does not exist") from exc
+            raise
+        return await asyncio.to_thread(response["Body"].read)
 
     async def delete(self, *, key: str) -> None:
         await asyncio.to_thread(self._client.delete_object, Bucket=self._bucket, Key=key)

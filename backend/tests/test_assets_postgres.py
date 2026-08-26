@@ -15,6 +15,7 @@ from app.infrastructure.database.repositories.conversations import (
 )
 from app.models.assets import AssetModel
 from app.models.conversations import ConversationModel
+from app.modules.posts.providers import StorageObjectNotFoundError
 from app.shared.assets.domain import AssetRole
 from app.shared.assets.service import AssetService
 from app.shared.conversations.domain import ConversationScope, MessageRole
@@ -42,6 +43,12 @@ class MemoryStorage:
         metadata: dict[str, str] | None = None,
     ) -> None:
         self.objects[key] = data
+
+    async def get(self, *, key: str) -> bytes:
+        stored = self.objects.get(key)
+        if stored is None:
+            raise StorageObjectNotFoundError(f"object '{key}' does not exist")
+        return stored
 
     async def delete(self, *, key: str) -> None:
         self.objects.pop(key, None)
