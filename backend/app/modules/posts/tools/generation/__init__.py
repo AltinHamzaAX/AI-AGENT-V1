@@ -12,6 +12,14 @@ from .planner import (
     GenerationTask,
     PreserveDirective,
 )
+from .prompt_builder import (
+    SCENE_PROMPT_SCHEMA_VERSION,
+    ImagePromptBuilder,
+    ScenePolicyRule,
+    ScenePrompt,
+    ScenePromptInput,
+)
+from .scene import SceneArtifact, SceneGenerationStatus, SceneGenerator
 
 __all__ = [
     "GENERATION_PLAN_SCHEMA_VERSION",
@@ -24,4 +32,12 @@ __all__ = [
     "GenerationPlannerInput",
     "GenerationTask",
     "PreserveDirective",
+    "SCENE_PROMPT_SCHEMA_VERSION",
+    "ImagePromptBuilder",
+    "SceneArtifact",
+    "SceneGenerationStatus",
+    "SceneGenerator",
+    "ScenePolicyRule",
+    "ScenePrompt",
+    "ScenePromptInput",
 ]

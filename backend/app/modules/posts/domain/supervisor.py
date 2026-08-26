@@ -242,7 +242,14 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
         SupervisorStagePolicy(
             SupervisorStage.PRODUCTION,
             dependencies=(SupervisorStage.GENERATION_PLANNING,),
-            required_sections=(PostWorkflowSection.GENERATION_PLAN,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.CREATIVE_CONCEPT,
+                PostWorkflowSection.ART_DIRECTION,
+                PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.ASSETS,
+                PostWorkflowSection.GENERATION_PLAN,
+            ),
             output_sections=(PostWorkflowSection.GENERATION_ARTIFACTS,),
         ),
         SupervisorStagePolicy(

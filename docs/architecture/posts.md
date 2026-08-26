@@ -611,6 +611,31 @@ The plan records the estimated image calls and cost tier, making fidelity,
 latency and cost consequences visible before production. Planning invokes no AI
 provider and is repeatable for identical state.
 
+## Image prompt builder and scene generation
+
+`ImagePromptBuilder` compiles the immutable semantic contract, selected creative
+concept, approved art direction, `DesignSpec`, asset policies and generation
+plan into a provider-neutral `ScenePrompt`. All inputs must carry one contract
+fingerprint. Protected product and logo policies become exact quiet-region
+reservations from the design geometry; asset identifiers and customer-facing
+brand, product, offer and CTA strings never enter the provider prompt.
+
+The positive prompt asks only for a scene or background plate: environment,
+lighting, photography, atmosphere and texture. A complete negative prompt
+always prohibits readable promotional text, fake logos, fake branding, fake
+prices or offers, CTA, UI and watermarks. Final copy, prices, CTA and logos are
+therefore left to deterministic composition rather than the image model.
+
+`ProductionStageHandler` skips the provider for `COMPOSE_ONLY`. Otherwise it
+calls the provider through the existing interface, rejects empty, unreadable,
+unsafe, MIME-mismatched or incorrectly sized output, and persists validated
+bytes through `StorageProvider`. Workflow state receives JSON-only artifact
+metadata: deterministic storage key, checksum, dimensions, provider/model and
+prompt fingerprint. The key is stable for a generation and prompt, so worker
+retry overwrites the same artifact instead of creating duplicates. Provider or
+storage failures remain stage failures for the Supervisor retry policy; no
+invalid artifact metadata is committed.
+
 ## Product preservation and image editing
 
 A generated stand-in for a real vehicle, package or logo is not a rendering

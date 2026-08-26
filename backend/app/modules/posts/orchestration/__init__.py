@@ -25,6 +25,7 @@ from app.modules.posts.orchestration.generation_planning import (
 from app.modules.posts.orchestration.marketing_strategy import (
     MarketingStrategyStageHandler,
 )
+from app.modules.posts.orchestration.production import ProductionStageHandler
 from app.modules.posts.orchestration.supervisor import (
     PostSupervisorExecutor,
     SupervisorBlockedError,
@@ -48,6 +49,7 @@ __all__ = [
     "GenerationPlanningStageHandler",
     "MarketingStrategyStageHandler",
     "PostSupervisorExecutor",
+    "ProductionStageHandler",
     "SupervisorBlockedError",
     "SupervisorCheckpoint",
     "SupervisorCheckpointStore",
