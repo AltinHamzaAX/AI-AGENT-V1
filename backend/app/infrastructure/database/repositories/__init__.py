@@ -12,6 +12,9 @@ from app.infrastructure.database.repositories.generation_jobs import (
     SQLAlchemyGenerationJobRepository,
 )
 from app.infrastructure.database.repositories.posts import SQLAlchemyPostRepository
+from app.infrastructure.database.repositories.semantic_memory import (
+    SQLAlchemySemanticMemoryRepository,
+)
 from app.infrastructure.database.repositories.supervisor import (
     SQLAlchemySupervisorCheckpointStore,
 )
@@ -23,5 +26,6 @@ __all__ = [
     "SQLAlchemyGenerationJobRepository",
     "SQLAlchemyExecutionTraceRecorder",
     "SQLAlchemyRepository",
+    "SQLAlchemySemanticMemoryRepository",
     "SQLAlchemySupervisorCheckpointStore",
 ]

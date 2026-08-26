@@ -387,6 +387,27 @@ later stage inherits the uncertainty rather than only the decisions. Forbidden
 claims fail the whole strategy, and copy, headlines, art direction and design
 remain out of scope: this stage produces the thinking that later stages execute.
 
+## Semantic memory
+
+Posts semantic memory is an internal application service backed by PostgreSQL
+and `pgvector`. It accepts only brand knowledge, approved creatives, research
+summaries, successful concepts, visual references, designer feedback, rejected
+concepts, and rejected patterns. IDs, statuses, timestamps, and operational or
+user-record data remain relational fields or JSON metadata and are never used as
+the vector text. Repeating the same content, kind, and partition is idempotent.
+
+Every record belongs to one exact partition inside a mandatory `user_id`
+boundary: one brand, one project, one normalized category, or the user's global
+partition. Category and global memories must be explicitly brand-neutral.
+Retrieval applies the user, level, and partition key filters in SQL before
+ordering by cosine distance; it never broadens a brand query to another brand,
+category, project, user, or global partition. Callers that want multiple levels
+must request each permitted partition explicitly and merge the results at their
+own application boundary.
+
+Embeddings use a fixed 768-dimensional schema and cosine HNSW index. Provider
+and model identity are retained on every memory. A provider dimension mismatch
+fails before persistence or retrieval instead of writing incompatible vectors.
 ## Creative Direction
 
 The Creative Director converts an approved marketing strategy into exploration,
