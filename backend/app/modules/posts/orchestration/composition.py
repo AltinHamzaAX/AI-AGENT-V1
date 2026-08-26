@@ -25,6 +25,7 @@ from app.modules.posts.tools.composition import (
     StoredRender,
 )
 from app.modules.posts.tools.generation import SceneArtifact, SceneGenerationStatus
+from app.modules.posts.tools.scene_purity import ScenePurityReport, ScenePurityVerdict
 from app.shared.assets.contracts import AssetRepository
 from app.shared.conversations.domain import ConversationScope
 
@@ -111,6 +112,7 @@ class WorkflowCompositionResolver:
             artifact = generated[-1]
             if artifact.storage_key is None or artifact.mime_type is None:
                 raise ValueError("a generated scene artifact must carry its storage metadata")
+            _require_pure_scene(state, artifact)
             return SourceVisual(
                 # The plate has no asset row, so its identity is its object key.
                 asset_id=uuid5(NAMESPACE_URL, artifact.storage_key),
@@ -217,6 +219,31 @@ async def _store(storage, asset: RenderedAsset, *, key: str, kind: str) -> Store
         height=asset.height,
         checksum=asset.checksum,
     )
+
+
+def _require_pure_scene(state: dict[str, Any], artifact: SceneArtifact) -> None:
+    """Refuse a generated plate that scene purity has not cleared.
+
+    Enforced here rather than trusting stage order: composition is the boundary a
+    contaminated scene must never cross, whoever assembled the workflow.
+    """
+    value = state.get(PostWorkflowSection.SCENE_PURITY.value)
+    if not isinstance(value, dict) or not value:
+        raise CompositionError(
+            CompositionFailure.CONTAMINATED_SCENE,
+            "the generated scene has no scene-purity report",
+        )
+    report = ScenePurityReport.model_validate(value)
+    if report.verdict is not ScenePurityVerdict.PASS:
+        raise CompositionError(
+            CompositionFailure.CONTAMINATED_SCENE,
+            f"scene purity returned {report.verdict.value}: {report.reason}",
+        )
+    if not report.certifies(artifact.checksum or ""):
+        raise CompositionError(
+            CompositionFailure.CONTAMINATED_SCENE,
+            "the scene-purity report certifies different bytes than the scene artifact",
+        )
 
 
 def _section(state: dict[str, Any], section: PostWorkflowSection) -> list[Any]:

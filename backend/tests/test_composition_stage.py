@@ -8,6 +8,7 @@ from test_design_spec import _input as _design_input
 from test_design_spec import _spec_payload
 from test_deterministic_composer import _png
 from test_generation_planner import _asset
+from test_scene_purity import _clean_report
 
 from app.integrations.mock import (
     MockEmbeddingProvider,
@@ -37,6 +38,12 @@ from app.modules.posts.tools.generation import (
     GenerationKind,
     SceneArtifact,
     SceneGenerationStatus,
+)
+from app.modules.posts.tools.scene_purity import (
+    ContaminationKind,
+    ScenePurityFinding,
+    ScenePurityReport,
+    ScenePurityVerdict,
 )
 from app.shared.assets.domain import Asset, AssetRole
 from app.shared.conversations.domain import ConversationScope
@@ -177,6 +184,15 @@ async def _fixture(
             policy.model_dump(mode="json") for policy in policies.values()
         ],
         PostWorkflowSection.GENERATION_ARTIFACTS.value: [artifact.model_dump(mode="json")],
+        PostWorkflowSection.SCENE_PURITY.value: (
+            _clean_report(
+                checksum=artifact.checksum or "",
+                storage_key=scene_key,
+                contract_fingerprint=fingerprint,
+            )
+            if scene_generated
+            else {}
+        ),
     }
     return _Fixture(
         state=state,
@@ -325,3 +341,74 @@ async def test_unavailable_storage_stops_the_stage_before_writing() -> None:
         await fixture.handler(storage).execute(_context(fixture.state))
 
     assert not any("/composition/" in key for key in storage.objects)
+
+
+@pytest.mark.asyncio
+async def test_a_generated_scene_without_a_purity_report_never_reaches_the_composer() -> None:
+    fixture = await _fixture()
+    fixture.state[PostWorkflowSection.SCENE_PURITY.value] = {}
+
+    with pytest.raises(CompositionError) as failure:
+        await fixture.handler().execute(_context(fixture.state))
+
+    assert failure.value.failure is CompositionFailure.CONTAMINATED_SCENE
+    assert not any("/composition/" in key for key in fixture.storage.objects)
+
+
+@pytest.mark.asyncio
+async def test_a_contaminated_scene_never_reaches_the_composer() -> None:
+    fixture = await _fixture()
+    report = ScenePurityReport.model_validate(
+        fixture.state[PostWorkflowSection.SCENE_PURITY.value]
+    )
+    detail = "watermark: a stock-library mark sits across the plate"
+    contaminated = report.model_copy(
+        update={
+            "verdict": ScenePurityVerdict.REGENERATE_SCENE,
+            "findings": [
+                ScenePurityFinding(
+                    kind=ContaminationKind.WATERMARK, confidence=0.9, detail=detail
+                )
+            ],
+            "checks": [
+                check.model_copy(update={"passed": False, "detail": detail})
+                if check.kind is ContaminationKind.WATERMARK
+                else check
+                for check in report.checks
+            ],
+        }
+    )
+    fixture.state[PostWorkflowSection.SCENE_PURITY.value] = contaminated.model_dump(mode="json")
+
+    with pytest.raises(CompositionError) as failure:
+        await fixture.handler().execute(_context(fixture.state))
+
+    assert failure.value.failure is CompositionFailure.CONTAMINATED_SCENE
+    assert "REGENERATE_SCENE" in failure.value.detail
+
+
+@pytest.mark.asyncio
+async def test_a_report_certifying_an_earlier_plate_does_not_clear_this_one() -> None:
+    fixture = await _fixture()
+    stale = ScenePurityReport.model_validate(
+        fixture.state[PostWorkflowSection.SCENE_PURITY.value]
+    ).model_copy(update={"scene_checksum": "b" * 64})
+    fixture.state[PostWorkflowSection.SCENE_PURITY.value] = stale.model_dump(mode="json")
+
+    with pytest.raises(CompositionError) as failure:
+        await fixture.handler().execute(_context(fixture.state))
+
+    assert failure.value.failure is CompositionFailure.CONTAMINATED_SCENE
+    assert "certifies different bytes" in failure.value.detail
+
+
+@pytest.mark.asyncio
+async def test_an_approved_environment_asset_needs_no_purity_certificate() -> None:
+    fixture = await _fixture(
+        scene_generated=False, extra_roles=(IntelligentAssetRole.ENVIRONMENT,)
+    )
+
+    result = await fixture.handler().execute(_context(fixture.state))
+
+    draft = PostDraft.model_validate(result.outputs[PostWorkflowSection.POST_DRAFT])
+    assert any(item.kind is ComponentKind.SCENE for item in draft.components)

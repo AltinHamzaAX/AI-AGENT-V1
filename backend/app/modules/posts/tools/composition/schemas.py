@@ -18,6 +18,7 @@ class CompositionFailure(StrEnum):
     CHECKSUM_MISMATCH = "checksum_mismatch"
     MISSING_REQUIRED_ASSET = "missing_required_asset"
     IDENTITY_POLICY_VIOLATION = "identity_policy_violation"
+    CONTAMINATED_SCENE = "contaminated_scene"
     FONT_UNAVAILABLE = "font_unavailable"
     TEXT_OVERFLOW = "text_overflow"
     EXPORT_TOO_LARGE = "export_too_large"

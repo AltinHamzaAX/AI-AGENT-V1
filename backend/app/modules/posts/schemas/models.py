@@ -216,6 +216,7 @@ class WorkflowStateData(BaseModel):
     design_spec: dict[str, JsonValue]
     generation_plan: dict[str, JsonValue]
     generation_artifacts: list[JsonValue]
+    scene_purity: dict[str, JsonValue]
     post_draft: dict[str, JsonValue]
     quality: dict[str, JsonValue]
     revision_history: list[JsonValue]
