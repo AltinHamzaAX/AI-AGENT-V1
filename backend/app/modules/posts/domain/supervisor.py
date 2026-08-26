@@ -206,8 +206,17 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
         ),
         SupervisorStagePolicy(
             SupervisorStage.ART_DIRECTION,
-            dependencies=(SupervisorStage.CREATIVE_CONCEPT,),
-            required_sections=(PostWorkflowSection.CREATIVE_CONCEPT,),
+            dependencies=(
+                SupervisorStage.COPYWRITING,
+                SupervisorStage.ASSET_INTELLIGENCE,
+            ),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.CREATIVE_CONCEPT,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.BRAND,
+                PostWorkflowSection.ASSETS,
+            ),
             output_sections=(PostWorkflowSection.ART_DIRECTION,),
         ),
         SupervisorStagePolicy(

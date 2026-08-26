@@ -499,6 +499,28 @@ forbidden claims must already exist upstream; otherwise the complete output is
 repaired once and then fails closed. Copywriting cannot emit layout, typography,
 logo placement, image prompts or any other Art Director or production field.
 
+## Art direction
+
+`ArtDirectorAgent` runs after copywriting and asset intelligence, and writes only
+the `art_direction` workflow section. It receives the winning concept, approved
+copy, verified brand analysis, asset policies, platform and immutable semantic
+contract. All upstream fingerprints must agree before the provider is called.
+Rejected concepts are excluded so the selected route remains the only creative
+source of truth.
+
+The output defines focal point, composition, ordered visual hierarchy, product
+dominance, negative space, photography, lighting, typography, color, graphic
+language, CTA treatment and protected logo region. Product leads the hierarchy;
+headline, approved offer and CTA follow; logo closes it. Deterministic gates
+enforce hierarchy, concept alignment, asset fidelity, copy fit and mobile
+readability. Product dominance must respect both global bounds and any supplied
+asset-policy range. Unsupported color codes and instructions that replace or
+regenerate protected product or logo identity fail closed after one full repair.
+
+This stage describes production-ready visual intent but does not generate an
+image, rewrite copy, create SVG/CSS or emit a final layout. It has no tools and
+cannot mutate assets.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a
