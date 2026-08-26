@@ -29,6 +29,7 @@ class SupervisorStage(StrEnum):
     DESIGN_SPEC = "design_spec"
     GENERATION_PLANNING = "generation_planning"
     PRODUCTION = "production"
+    SCENE_PURITY = "scene_purity"
     COMPOSITION = "composition"
     QUALITY_REVIEW = "quality_review"
 
@@ -254,13 +255,29 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
             output_sections=(PostWorkflowSection.GENERATION_ARTIFACTS,),
         ),
         SupervisorStagePolicy(
-            SupervisorStage.COMPOSITION,
+            SupervisorStage.SCENE_PURITY,
             dependencies=(SupervisorStage.PRODUCTION,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.GENERATION_PLAN,
+                PostWorkflowSection.GENERATION_ARTIFACTS,
+            ),
+            # Writes revision history so a contaminated plate can send production
+            # back for another scene instead of reaching the composer.
+            output_sections=(
+                PostWorkflowSection.SCENE_PURITY,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
+        ),
+        SupervisorStagePolicy(
+            SupervisorStage.COMPOSITION,
+            dependencies=(SupervisorStage.SCENE_PURITY,),
             required_sections=(
                 PostWorkflowSection.COPY,
                 PostWorkflowSection.DESIGN_SPEC,
                 PostWorkflowSection.ASSETS,
                 PostWorkflowSection.GENERATION_ARTIFACTS,
+                PostWorkflowSection.SCENE_PURITY,
             ),
             output_sections=(PostWorkflowSection.POST_DRAFT,),
         ),

@@ -31,6 +31,7 @@ from app.modules.posts.orchestration.marketing_strategy import (
     MarketingStrategyStageHandler,
 )
 from app.modules.posts.orchestration.production import ProductionStageHandler
+from app.modules.posts.orchestration.scene_purity import ScenePurityStageHandler
 from app.modules.posts.orchestration.supervisor import (
     PostSupervisorExecutor,
     SupervisorBlockedError,
@@ -57,6 +58,7 @@ __all__ = [
     "MarketingStrategyStageHandler",
     "PostSupervisorExecutor",
     "ProductionStageHandler",
+    "ScenePurityStageHandler",
     "SupervisorBlockedError",
     "SupervisorCheckpoint",
     "SupervisorCheckpointStore",

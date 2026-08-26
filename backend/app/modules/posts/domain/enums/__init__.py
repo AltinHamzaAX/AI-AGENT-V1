@@ -44,6 +44,7 @@ class PostWorkflowSection(StrEnum):
     DESIGN_SPEC = "design_spec"
     GENERATION_PLAN = "generation_plan"
     GENERATION_ARTIFACTS = "generation_artifacts"
+    SCENE_PURITY = "scene_purity"
     POST_DRAFT = "post_draft"
     QUALITY = "quality"
     REVISION_HISTORY = "revision_history"
