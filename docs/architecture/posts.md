@@ -521,6 +521,26 @@ This stage describes production-ready visual intent but does not generate an
 image, rewrite copy, create SVG/CSS or emit a final layout. It has no tools and
 cannot mutate assets.
 
+## Design specification
+
+`DesignSpecAgent` is the typed compiler between Art Director and Composer. It
+reads the approved art direction, copy and semantic contract, then writes only
+the `design_spec` workflow section. Composer-facing code must consume this
+contract and must not interpret the Art Director's free-form prose directly.
+
+DesignSpec schema version `1.0` represents canvas and safe-area dimensions in
+pixels, grid columns/rows/gutters/baseline, named product/headline/offer/CTA/logo
+regions, typography roles, color tokens, graphic elements, and production
+directions for photography, lighting and background. Unknown fields are
+rejected. Text and logo regions must fit the safe area; all geometry must fit
+the canvas; and offer geometry and typography exist only when approved offer
+copy exists. The semantic-contract fingerprint is attached by the application,
+not supplied by the model.
+
+Invalid structured output receives one complete repair pass and then fails
+closed. The compiler emits neither rendered assets nor CSS, SVG, image prompts
+or final composition, and it has no tools.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a
