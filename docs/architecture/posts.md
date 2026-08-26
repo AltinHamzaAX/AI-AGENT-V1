@@ -573,6 +573,25 @@ unavailable fonts, overlap, clipping, unreadable contrast and text outside the
 safe area are hard failures. The engine is pure and repeatable: it calls no
 provider, performs no rendering and does not mutate DesignSpec or LayoutPlan.
 
+## Color and contrast engine
+
+`ColorContrastEngine` resolves the DesignSpec color tokens into dominant,
+secondary, accent, background, text and CTA roles. Tokens marked as brand colors
+must exist in an explicit approved brand palette; colors marked neutral are
+checked for low chroma so an invented color cannot bypass brand validation.
+
+Text/background and CTA contrast use deterministic relative-luminance ratios,
+and remain consistent with the TypographyPlan. Product color samples are
+compared with the background; an unusably low separation is a hard failure,
+while a marginal result requires an approved neutral separation treatment. The
+engine also reports a bounded visual-harmony score and preserves the objective
+and mood that the palette is expected to support.
+
+Gradients are absent by default. A gradient is accepted only when explicitly
+approved, composed solely of approved/resolved palette colors, and its reason is
+grounded in the supplied objective or mood. “Looks modern” is not a valid design
+reason. The engine is deterministic and invokes no image or text provider.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a
