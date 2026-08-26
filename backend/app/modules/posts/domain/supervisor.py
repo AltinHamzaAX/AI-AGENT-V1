@@ -199,6 +199,8 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
             required_sections=(
                 PostWorkflowSection.SEMANTIC_CONTRACT,
                 PostWorkflowSection.CREATIVE_CONCEPT,
+                PostWorkflowSection.MARKETING_STRATEGY,
+                PostWorkflowSection.BRAND,
             ),
             output_sections=(PostWorkflowSection.COPY,),
         ),
