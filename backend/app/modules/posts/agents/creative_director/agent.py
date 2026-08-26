@@ -26,11 +26,14 @@ from .quality import (
     validate_exploration,
 )
 from .schemas import (
+    CONCEPT_SELECTION_DIMENSIONS,
     QUALITY_THRESHOLDS,
     CreativeAngle,
     CreativeDirection,
     CreativeDirectorInput,
     CreativeDirectorLLMOutput,
+    RejectedConcept,
+    WinningConcept,
 )
 
 CREATIVE_DIRECTOR_AGENT_NAME = "creative_director"
@@ -279,6 +282,9 @@ def _creative_source(
             "constraints": list(payload.brand.constraints),
         },
         "research": research,
+        "anti_repetition": {
+            "prior_rejected_concepts": list(payload.rejected_concept_memory),
+        },
     }
     allowed = {
         *(f"marketing_strategy.{name}" for name in payload.marketing_strategy.decisions()),
@@ -380,19 +386,57 @@ def _validated_direction(
     hooks = {item.id: item for item in exploration.visual_hooks}
     limitations = _limitations(payload)
     limitations.extend(extra_limitations or [])
+    rationale = selection_rationale(
+        selected,
+        runner_up,
+        territories[selected.territory_id],
+        hooks[selected.visual_hook_id],
+    )
     return CreativeDirection(
         **exploration.model_dump(mode="json"),
-        selected_big_idea_id=selected.id,
-        creative_rationale=selection_rationale(
-            selected,
-            runner_up,
-            territories[selected.territory_id],
-            hooks[selected.visual_hook_id],
+        winning_concept=WinningConcept(
+            candidate_id=selected.id,
+            total_score=selected.evaluation.total,
+            rationale=rationale,
         ),
+        rejected_concepts=[
+            RejectedConcept(
+                candidate_id=candidate.id,
+                rank=rank,
+                total_score=candidate.evaluation.total,
+                rejection_reason=_rejection_reason(selected, candidate),
+                weakness=candidate.evaluation.weakness,
+            )
+            for rank, candidate in enumerate(ranked[1:], start=2)
+        ],
+        creative_rationale=rationale,
         quality_gate=gate,
         limitations=list(dict.fromkeys(limitations))[:20],
         contract_fingerprint=contract.fingerprint,
     )
+
+
+def _rejection_reason(selected: Any, rejected: Any) -> str:
+    winning_scores = selected.evaluation.selection_scores()
+    rejected_scores = rejected.evaluation.selection_scores()
+    deficits = sorted(
+        (
+            (winning_scores[name] - rejected_scores[name], name)
+            for name in CONCEPT_SELECTION_DIMENSIONS
+            if winning_scores[name] > rejected_scores[name]
+        ),
+        reverse=True,
+    )
+    comparison = ", ".join(
+        f"{name.replace('_', ' ')} {rejected_scores[name]} versus {winning_scores[name]}"
+        for _, name in deficits[:3]
+    )
+    if not comparison:
+        comparison = "a lower total across the eight selection dimensions"
+    return (
+        f"Rejected behind {selected.name} because it has {comparison}. "
+        f"Known weakness: {rejected.evaluation.weakness}"
+    )[:1_000]
 
 
 def _limitations(payload: CreativeDirectorInput) -> list[str]:
@@ -444,13 +488,17 @@ def _system_prompt(allowed_basis: set[str]) -> str:
         "CHAIN. Audience tension leads to marketing angle, angle to territory, territory to "
         "Big Idea, Big Idea to visual hook. Every link must interpret the one before it and "
         "add something it did not say. Restating a link in new words breaks the chain.\n"
-        "SCORING. Score each candidate 1-10 on strategy_fit, originality, "
-        "territory_differentiation, visual_potential, claim_safety, concept_hook_alignment and "
-        "production_readiness, and name the candidate's real weakness. Identical scorecards "
+        "SCORING. Rank concepts only on these eight 1-10 dimensions: strategy_fit, "
+        "audience_fit, brand_fit, originality, clarity, visual_potential, platform_fit and "
+        "production_feasibility. Also score the quality gates territory_differentiation, "
+        "claim_safety and concept_hook_alignment, and name the candidate's real weakness. "
+        "Identical scorecards "
         "are not an evaluation and a flawless scorecard is not credible: every candidate must "
         "carry at least one honest weakness, and the cards must separate the routes. The "
         f"concept that wins is held to these minimums: {thresholds}. Do not raise a score to "
         "reach them; only a stronger concept clears them.\n"
+        "ANTI-REPETITION. The source may contain prior_rejected_concepts. Do not rename, "
+        "rephrase or recreate those routes; use their failure reasons to explore elsewhere.\n"
         "EVIDENCE. Every item needs at least two exact basis identifiers from this allowlist: "
         f"{basis}. Every item must cite marketing_strategy; territories must also cite audience "
         "evidence; hooks must also cite brand, research or platform evidence. Research informs "

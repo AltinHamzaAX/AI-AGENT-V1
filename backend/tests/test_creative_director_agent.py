@@ -166,12 +166,16 @@ _IDEAS = (
         "basis": ["marketing_strategy.single_minded_message", "audience.target"],
         "evaluation": {
             "strategy_fit": 8,
+            "audience_fit": 8,
+            "brand_fit": 8,
             "originality": 7,
-            "territory_differentiation": 8,
+            "clarity": 8,
             "visual_potential": 8,
+            "platform_fit": 8,
+            "production_feasibility": 8,
+            "territory_differentiation": 8,
             "claim_safety": 10,
             "concept_hook_alignment": 9,
-            "production_readiness": 8,
             "weakness": (
                 "The continuous-line device is common in travel work and needs unusual "
                 "craft to feel new."
@@ -206,12 +210,16 @@ _IDEAS = (
         "basis": ["marketing_strategy.marketing_angle", "audience.target"],
         "evaluation": {
             "strategy_fit": 9,
+            "audience_fit": 9,
+            "brand_fit": 9,
             "originality": 9,
-            "territory_differentiation": 9,
+            "clarity": 9,
             "visual_potential": 9,
+            "platform_fit": 9,
+            "production_feasibility": 9,
+            "territory_differentiation": 9,
             "claim_safety": 10,
             "concept_hook_alignment": 10,
-            "production_readiness": 9,
             "weakness": (
                 "The doormat motif risks reading as domestic rather than premium in "
                 "some placements."
@@ -243,12 +251,16 @@ _IDEAS = (
         "basis": ["marketing_strategy.customer_insight", "audience.target"],
         "evaluation": {
             "strategy_fit": 8,
+            "audience_fit": 8,
+            "brand_fit": 8,
             "originality": 8,
-            "territory_differentiation": 9,
+            "clarity": 8,
             "visual_potential": 8,
+            "platform_fit": 8,
+            "production_feasibility": 9,
+            "territory_differentiation": 9,
             "claim_safety": 10,
             "concept_hook_alignment": 9,
-            "production_readiness": 9,
             "weakness": (
                 "The board transformation is harder to read at small sizes in a "
                 "crowded feed."
@@ -360,6 +372,9 @@ async def test_creative_director_explores_then_selects_highest_scoring_big_idea(
     assert len(result.visual_hooks) == 3
     assert len(result.big_idea_candidates) == 3
     assert result.selected_big_idea_id == "idea_2"
+    assert result.winning_concept.candidate_id == "idea_2"
+    assert [item.candidate_id for item in result.rejected_concepts] == ["idea_3", "idea_1"]
+    assert [item.rank for item in result.rejected_concepts] == [2, 3]
     assert result.creative_rationale.startswith("Selected A Welcome You Can Drive")
     assert result.contract_fingerprint == payload.marketing_strategy.contract_fingerprint
     assert result.limitations == payload.marketing_strategy.limitations
@@ -380,8 +395,8 @@ async def test_selection_justifies_the_winner_against_the_runner_up() -> None:
 
     rationale = result.creative_rationale
     assert "Arrival Becomes Journey" in rationale
-    assert "65/70" in rationale and "61/70" in rationale
-    assert "originality 9 versus 8" in rationale
+    assert "72/80" in rationale and "65/80" in rationale
+    assert "strategy fit 9 versus 8" in rationale
     assert "cultural tension" in rationale
     assert "doormat motif risks reading as domestic" in rationale
     assert "hotel forecourt" in rationale
@@ -675,9 +690,9 @@ async def test_patch_can_restore_missing_candidate_evaluations() -> None:
     result = await _run(payload, _CreativeLLM([invalid, patch]))
 
     assert [candidate.evaluation.total for candidate in result.big_idea_candidates] == [
-        58,
+        63,
+        72,
         65,
-        61,
     ]
 
 
@@ -959,7 +974,12 @@ async def test_the_stage_asks_for_the_creative_model_not_the_shared_one() -> Non
 
     assert len(invention.requests) == 1
     assert extraction.requests == []
-    assert result.outputs[PostWorkflowSection.CREATIVE_CONCEPT]["selected_big_idea_id"] == "idea_2"
+    output = result.outputs[PostWorkflowSection.CREATIVE_CONCEPT]
+    assert output["winning_concept"]["candidate_id"] == "idea_2"
+    assert [item["candidate_id"] for item in output["rejected_concepts"]] == [
+        "idea_3",
+        "idea_1",
+    ]
 
 
 def test_supervisor_declares_the_five_creative_director_inputs() -> None:
