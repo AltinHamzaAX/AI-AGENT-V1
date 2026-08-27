@@ -85,6 +85,7 @@ class QualityScoringInput(BaseModel):
 
     marketing_report: dict
     design_report: dict
+    vision_report: dict
     creative_direction: dict
     verification_report: dict
     render_checksum: str = Field(min_length=64, max_length=64)

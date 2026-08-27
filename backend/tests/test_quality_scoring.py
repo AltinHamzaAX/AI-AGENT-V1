@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.modules.posts.agents.design_critic import DesignDimension
 from app.modules.posts.agents.marketing_critic import MarketingDimension
+from app.modules.posts.agents.vision_critic import VisionDimension
 from app.modules.posts.domain.supervisor import DEFAULT_SUPERVISOR_PLAN, SupervisorStage
 from app.modules.posts.tools.quality import (
     ApprovalDecision,
@@ -120,6 +121,34 @@ def _creative(score: int = 10) -> dict:
     }
 
 
+def _vision(failed: VisionDimension | None = None, severity: str = "high") -> dict:
+    issues = []
+    if failed:
+        issues.append(
+            {
+                "dimension": failed.value,
+                "issue": "Perceptual mismatch.",
+                "region": "primary region",
+                "severity": severity,
+                "confidence": 0.95,
+                "expected": "The approved visual relationship.",
+                "observed": "The final pixels visibly contradict it.",
+                "recommended_action": "Correct only this region.",
+            }
+        )
+    return {
+        "decision": "REVISE" if issues else "PASS",
+        "assessed_dimensions": [item.value for item in VisionDimension],
+        "issues": issues,
+        "summary": "Complete perceptual review.",
+        "provider": "test",
+        "model": "test",
+        "contract_fingerprint": FINGERPRINT,
+        "render_fingerprint": RENDER,
+        "render_checksum": CHECKSUM,
+    }
+
+
 def _verification(failed: VerificationGate | None = None) -> dict:
     checks = [
         {
@@ -149,6 +178,7 @@ def _input(**changes) -> QualityScoringInput:
     values = {
         "marketing_report": _marketing(),
         "design_report": _design(),
+        "vision_report": _vision(),
         "creative_direction": _creative(9),
         "verification_report": _verification(),
         "render_checksum": CHECKSUM,
@@ -178,6 +208,14 @@ def test_marketing_failure_routes_to_mutation() -> None:
 
 def test_visual_failure_routes_to_recomposition() -> None:
     report = QualityScoringEngine().score(_input(design_report=_design(DesignDimension.HIERARCHY)))
+    assert report.decision is ApprovalDecision.RECOMPOSE
+    assert QualityDimension.VISUAL_HIERARCHY in report.failed_dimensions
+
+
+def test_perceptual_failure_cannot_be_outvoted_by_clean_design_spec_review() -> None:
+    report = QualityScoringEngine().score(
+        _input(vision_report=_vision(VisionDimension.VISUAL_HIERARCHY))
+    )
     assert report.decision is ApprovalDecision.RECOMPOSE
     assert QualityDimension.VISUAL_HIERARCHY in report.failed_dimensions
 
@@ -236,7 +274,7 @@ def test_invalid_threshold_configuration_is_refused() -> None:
 
 def test_quality_stage_runs_after_both_critic_layers() -> None:
     policy = DEFAULT_SUPERVISOR_PLAN.get(SupervisorStage.QUALITY_SCORING)
-    assert policy.dependencies == (SupervisorStage.DESIGN_REVIEW,)
+    assert policy.dependencies == (SupervisorStage.VISION_REVIEW,)
     assert policy.output_sections[0].value == "quality_approval"
 
 

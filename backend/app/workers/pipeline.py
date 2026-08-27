@@ -41,6 +41,7 @@ from app.modules.posts.orchestration import (
     SupervisorStageContext,
     SupervisorStageHandler,
     VerificationStageHandler,
+    VisionCriticStageHandler,
     WorkflowCompositionResolver,
 )
 from app.modules.posts.providers import ProviderBundle, StorageProvider
@@ -161,6 +162,10 @@ def build_stage_handlers(
             trace_recorder=trace_recorder,
         ),
         SupervisorStage.DESIGN_REVIEW: DesignCriticStageHandler(
+            providers,
+            trace_recorder=trace_recorder,
+        ),
+        SupervisorStage.VISION_REVIEW: VisionCriticStageHandler(
             providers,
             trace_recorder=trace_recorder,
         ),

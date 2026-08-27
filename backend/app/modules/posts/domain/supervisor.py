@@ -34,6 +34,7 @@ class SupervisorStage(StrEnum):
     VERIFICATION = "verification"
     QUALITY_REVIEW = "quality_review"
     DESIGN_REVIEW = "design_review"
+    VISION_REVIEW = "vision_review"
     QUALITY_SCORING = "quality_scoring"
 
 
@@ -328,8 +329,24 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
             ),
         ),
         SupervisorStagePolicy(
-            SupervisorStage.QUALITY_SCORING,
+            SupervisorStage.VISION_REVIEW,
             dependencies=(SupervisorStage.DESIGN_REVIEW,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.ASSETS,
+                PostWorkflowSection.POST_DRAFT,
+                PostWorkflowSection.DESIGN_QUALITY,
+            ),
+            output_sections=(
+                PostWorkflowSection.VISION_QUALITY,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
+        ),
+        SupervisorStagePolicy(
+            SupervisorStage.QUALITY_SCORING,
+            dependencies=(SupervisorStage.VISION_REVIEW,),
             required_sections=(
                 PostWorkflowSection.SEMANTIC_CONTRACT,
                 PostWorkflowSection.CREATIVE_CONCEPT,
@@ -337,6 +354,7 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
                 PostWorkflowSection.VERIFICATION,
                 PostWorkflowSection.QUALITY,
                 PostWorkflowSection.DESIGN_QUALITY,
+                PostWorkflowSection.VISION_QUALITY,
             ),
             output_sections=(
                 PostWorkflowSection.QUALITY_APPROVAL,

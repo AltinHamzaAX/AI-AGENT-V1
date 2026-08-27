@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from app.modules.posts.agents.design_critic import DesignDimension
 from app.modules.posts.agents.marketing_critic import MarketingDimension
+from app.modules.posts.agents.vision_critic import VisionDimension
 from app.modules.posts.domain.enums import PostWorkflowSection
 from app.modules.posts.tools.composition import PostDraft
 from app.modules.posts.tools.quality import (
@@ -133,6 +134,17 @@ def _demo_input(args: argparse.Namespace, thresholds: QualityThresholds) -> Qual
             "contract_fingerprint": fingerprint,
             "render_fingerprint": render,
         },
+        vision_report={
+            "decision": "PASS",
+            "assessed_dimensions": [item.value for item in VisionDimension],
+            "issues": [],
+            "summary": "The demo render has no perceptual failures.",
+            "provider": "scripted/demo",
+            "model": "deterministic",
+            "contract_fingerprint": fingerprint,
+            "render_fingerprint": render,
+            "render_checksum": checksum,
+        },
         creative_direction={
             "contract_fingerprint": fingerprint,
             "winning_concept": {"candidate_id": "idea_1"},
@@ -163,6 +175,7 @@ def _state_input(args: argparse.Namespace, thresholds: QualityThresholds) -> Qua
     return QualityScoringInput(
         marketing_report=_object(state, PostWorkflowSection.QUALITY),
         design_report=_object(state, PostWorkflowSection.DESIGN_QUALITY),
+        vision_report=_object(state, PostWorkflowSection.VISION_QUALITY),
         creative_direction=_object(state, PostWorkflowSection.CREATIVE_CONCEPT),
         verification_report=_object(state, PostWorkflowSection.VERIFICATION),
         render_checksum=draft.final_asset.checksum,

@@ -28,6 +28,7 @@ class QualityScoringStageHandler:
             QualityScoringInput(
                 marketing_report=_object(state, PostWorkflowSection.QUALITY),
                 design_report=_object(state, PostWorkflowSection.DESIGN_QUALITY),
+                vision_report=_object(state, PostWorkflowSection.VISION_QUALITY),
                 creative_direction=_object(state, PostWorkflowSection.CREATIVE_CONCEPT),
                 verification_report=_object(state, PostWorkflowSection.VERIFICATION),
                 render_checksum=draft.final_asset.checksum,

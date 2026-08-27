@@ -3,6 +3,7 @@ from typing import Any
 
 from app.modules.posts.agents.design_critic import DesignCriticReport, DesignDimension
 from app.modules.posts.agents.marketing_critic import MarketingCriticReport, MarketingDimension
+from app.modules.posts.agents.vision_critic import VisionCriticReport, VisionDimension
 from app.modules.posts.tools.verification import VerificationDecision, VerificationReport
 
 from .schemas import (
@@ -33,9 +34,10 @@ class QualityScoringEngine:
     def score(self, payload: QualityScoringInput) -> QualityApprovalReport:
         marketing = MarketingCriticReport.model_validate(payload.marketing_report)
         design = DesignCriticReport.model_validate(payload.design_report)
+        vision = VisionCriticReport.model_validate(payload.vision_report)
         verification = VerificationReport.model_validate(payload.verification_report)
-        self._validate_identity(payload, marketing, design, verification)
-        raw = self._raw_scores(marketing, design, payload.creative_direction, verification)
+        self._validate_identity(payload, marketing, design, vision, verification)
+        raw = self._raw_scores(marketing, design, vision, payload.creative_direction, verification)
         scores = [
             self._score(dimension, *raw[dimension], payload=payload)
             for dimension in QualityDimension
@@ -63,11 +65,12 @@ class QualityScoringEngine:
         )
 
     @staticmethod
-    def _validate_identity(payload, marketing, design, verification) -> None:
+    def _validate_identity(payload, marketing, design, vision, verification) -> None:
         creative_fingerprint = payload.creative_direction.get("contract_fingerprint")
         if {
             marketing.contract_fingerprint,
             design.contract_fingerprint,
+            vision.contract_fingerprint,
             verification.contract_fingerprint,
             creative_fingerprint,
         } != {payload.contract_fingerprint}:
@@ -75,13 +78,16 @@ class QualityScoringEngine:
         if {
             marketing.render_fingerprint,
             design.render_fingerprint,
+            vision.render_fingerprint,
             verification.render_fingerprint,
         } != {verification.render_fingerprint}:
             raise ValueError("quality evidence describes different renders")
         if verification.render_checksum != payload.render_checksum:
             raise ValueError("verification does not certify the scored render")
+        if vision.render_checksum != payload.render_checksum:
+            raise ValueError("vision review does not describe the scored render")
 
-    def _raw_scores(self, marketing, design, creative: dict[str, Any], verification):
+    def _raw_scores(self, marketing, design, vision, creative: dict[str, Any], verification):
         mr = {item.dimension: item for item in marketing.reviews}
         dc = {item.dimension: item for item in design.checks}
 
@@ -100,6 +106,24 @@ class QualityScoringEngine:
                 [item.evidence],
                 [f"design:{dim.value}"],
             )
+
+        vision_issues = {}
+        for issue in vision.issues:
+            current = vision_issues.get(issue.dimension, 10.0)
+            vision_issues[issue.dimension] = min(current, _DESIGN_SCORE[issue.severity.value])
+
+        def perception(*dims):
+            issues = [item for item in vision.issues if item.dimension in dims]
+            score = min((vision_issues.get(dim, 10.0) for dim in dims), default=10.0)
+            return (
+                score,
+                [f"{item.region}: {item.observed}" for item in issues]
+                or ["Vision critic found no perceptual failure."],
+                [f"vision:{dim.value}" for dim in dims],
+            )
+
+        def weaker(primary, perceptual):
+            return perceptual if perceptual[0] < primary[0] else primary
 
         selected = creative.get("winning_concept", {}).get("candidate_id")
         candidates = creative.get("big_idea_candidates", [])
@@ -122,19 +146,39 @@ class QualityScoringEngine:
                 ["Selected concept scorecard: strategy fit, clarity and visual potential."],
                 ["creative_direction:evaluation"],
             ),
-            QualityDimension.COMPOSITION: visual(DesignDimension.COMPOSITION),
-            QualityDimension.VISUAL_HIERARCHY: visual(DesignDimension.HIERARCHY),
-            QualityDimension.TYPOGRAPHY: visual(DesignDimension.TYPOGRAPHY),
+            QualityDimension.COMPOSITION: weaker(
+                visual(DesignDimension.COMPOSITION),
+                perception(
+                    VisionDimension.CROPS,
+                    VisionDimension.OVERLAPS,
+                    VisionDimension.SUBJECT_SCALE,
+                ),
+            ),
+            QualityDimension.VISUAL_HIERARCHY: weaker(
+                visual(DesignDimension.HIERARCHY),
+                perception(VisionDimension.VISUAL_HIERARCHY, VisionDimension.FOCAL_POINT),
+            ),
+            QualityDimension.TYPOGRAPHY: weaker(
+                visual(DesignDimension.TYPOGRAPHY),
+                perception(
+                    VisionDimension.READABILITY,
+                    VisionDimension.TEXT_LEGIBILITY,
+                    VisionDimension.CTA_VISIBILITY,
+                ),
+            ),
             QualityDimension.COLOR: visual(DesignDimension.COLOR),
             QualityDimension.BRAND_FIT: (
                 self._average([ce["brand_fit"], visual(DesignDimension.BRAND_CONSISTENCY)[0]]),
                 ["Creative brand fit and rendered brand consistency."],
                 ["creative_direction:brand_fit", "design:brand_consistency"],
             ),
-            QualityDimension.PRODUCT_FIDELITY: (
-                product,
-                ["Hard verification asset/product fidelity gates."],
-                ["verification"],
+            QualityDimension.PRODUCT_FIDELITY: weaker(
+                (product, ["Hard verification asset/product fidelity gates."], ["verification"]),
+                perception(
+                    VisionDimension.PRODUCT_FIDELITY,
+                    VisionDimension.LOGO_APPEARANCE,
+                    VisionDimension.DISTORTION,
+                ),
             ),
             QualityDimension.AUDIENCE_FIT: (
                 self._average(
@@ -173,10 +217,14 @@ class QualityScoringEngine:
                         visual(DesignDimension.BALANCE)[0],
                         visual(DesignDimension.FOCAL_POINT)[0],
                         visual(DesignDimension.NEGATIVE_SPACE)[0],
+                        perception(
+                            VisionDimension.SPACING, VisionDimension.AI_ARTIFACTS,
+                            VisionDimension.VISUAL_BALANCE,
+                        )[0],
                     ]
                 ),
                 ["Rendered craft checks contributing to final polish."],
-                ["design:craft_checks"],
+                ["design:craft_checks", "vision:perceptual_polish"],
             ),
         }
 
