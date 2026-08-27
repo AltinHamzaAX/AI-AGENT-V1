@@ -729,6 +729,32 @@ for research; and S3-compatible storage for MinIO/S3. A deterministic mock exist
 for every port, allowing workflow tests to run without network calls or secrets.
 Unknown or incomplete configuration fails closed with safe errors.
 
+## Hard verification gates
+
+Twelve gates stand between a finished render and the client, and none of them is
+a score: `correct_brand`, `correct_product`, `correct_logo`, `correct_offer`,
+`correct_spelling`, `required_facts_present`, `required_assets_present`,
+`forbidden_claims_absent`, `fake_branding_absent`, `unwanted_text_absent`,
+`correct_dimensions` and `asset_fidelity`. One failure sets the decision to
+BLOCKED and the Supervisor terminates the workflow, whatever the marketing and
+design reviews concluded. The gates run directly after composition, before
+anything scores the post, so a blocked render never costs a review and no score
+exists to be pointed at afterwards.
+
+Every gate is decided in policy from the semantic contract, the approved copy,
+the design spec and the draft's own component record. The vision model is a
+witness: it enumerates the legible strings, the brand identities and the
+depicted products, and never judges whether the post is acceptable. Constrained
+decoding holds it to that shape. The same inputs therefore always yield the same
+verdict, and a blocked post carries the evidence each gate read.
+
+Text gates compare the rendered strings against the approved copy rather than
+against a dictionary, which catches truncation, substitution and dropped glyphs
+in any language. Evidence read off the image is matched tolerantly, so a small
+model's misreading of approved copy cannot block a post while genuinely foreign
+text still does. This stage never requests a revision: a hard gate that could be
+negotiated with would be a score with extra steps.
+
 ## Observability and execution tracing
 
 The Posts execution boundary records four trace kinds: `agent`, `tool`,

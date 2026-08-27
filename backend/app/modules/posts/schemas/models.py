@@ -218,6 +218,7 @@ class WorkflowStateData(BaseModel):
     generation_artifacts: list[JsonValue]
     scene_purity: dict[str, JsonValue]
     post_draft: dict[str, JsonValue]
+    verification: dict[str, JsonValue]
     quality: dict[str, JsonValue]
     design_quality: dict[str, JsonValue]
     revision_history: list[JsonValue]
