@@ -1,0 +1,126 @@
+{
+  "dataset_version": "1.0",
+  "cases": [
+    {
+      "slug": "coffee-origin-launch",
+      "category": "coffee",
+      "title": "Single-origin coffee launch",
+      "brief": {"goal": "launch", "audience": "urban specialty-coffee buyers", "platform": "Instagram Feed", "offer": "new Ethiopian single origin", "cta": "Discover the roast"},
+      "assets": [{"role": "product_pack", "description": "Original coffee bag packshot", "required": true, "preserve_identity": true}, {"role": "brand_logo", "description": "Original roastery logo", "required": true, "preserve_identity": true}],
+      "professional_references": [{"source": "Behance curated projects", "url": "https://www.behance.net/search/projects?search=coffee%20branding", "use_for": "Human reviewers select comparable hierarchy, packaging fidelity and premium craft references.", "copy_or_brand_source": false}],
+      "expected_marketing_strategy": {"positioning": "traceable craft and sensory discovery", "single_minded_message": "A distinctive origin worth tasting", "desired_reaction": "curiosity and trial", "cta_strategy": "low-friction product discovery"},
+      "expected_constraints": ["Preserve package and logo identity", "Do not invent certifications or tasting awards", "Keep one dominant product message"],
+      "quality_labels": [{"dimension": "product_fidelity", "minimum_score": 9, "professional_standard": "Pack identity and proportions remain immediately recognizable.", "failure_signals": ["altered label", "invented package text"]}, {"dimension": "visual_hierarchy", "minimum_score": 9, "professional_standard": "Origin message and packshot form one intentional first-read path.", "failure_signals": ["competing headline", "oversized props"]}, {"dimension": "brand_fit", "minimum_score": 8.5, "professional_standard": "Craft cues feel specific rather than generic rustic styling.", "failure_signals": ["stock café aesthetic", "brand-color drift"]}]
+    },
+    {
+      "slug": "restaurant-seasonal-menu",
+      "category": "restaurant",
+      "title": "Seasonal dinner menu",
+      "brief": {"goal": "bookings", "audience": "local date-night diners", "platform": "Instagram Feed", "offer": "limited seasonal tasting menu", "cta": "Reserve your table"},
+      "assets": [{"role": "hero_dish", "description": "Approved signature-dish photography", "required": true, "preserve_identity": true}, {"role": "brand_logo", "description": "Restaurant wordmark", "required": true, "preserve_identity": true}],
+      "professional_references": [{"source": "Behance curated projects", "url": "https://www.behance.net/search/projects?search=restaurant%20campaign", "use_for": "Compare food appetite appeal, reservation clarity and hospitality typography.", "copy_or_brand_source": false}],
+      "expected_marketing_strategy": {"positioning": "a scarce seasonal dining occasion", "single_minded_message": "The season is available for a limited time", "desired_reaction": "anticipation", "cta_strategy": "direct reservation"},
+      "expected_constraints": ["Do not alter the approved dish", "Do not invent prices or ingredients", "CTA must remain legible at mobile size"],
+      "quality_labels": [{"dimension": "marketing_effectiveness", "minimum_score": 9, "professional_standard": "Scarcity and dining value are understood in one glance.", "failure_signals": ["generic awareness message", "missing booking cue"]}, {"dimension": "overall_polish", "minimum_score": 9, "professional_standard": "Food lighting, crop and type feel editorial and appetizing.", "failure_signals": ["awkward crop", "muddy food color"]}, {"dimension": "typography", "minimum_score": 8.5, "professional_standard": "Menu information is elegant and readable without crowding the dish.", "failure_signals": ["decorative unreadable type", "dense copy"]}]
+    },
+    {
+      "slug": "rent-a-car-airport-booking",
+      "category": "rent-a-car",
+      "title": "Airport rental conversion",
+      "brief": {"goal": "bookings", "audience": "airport travelers", "platform": "Instagram Feed", "offer": "from EUR35 per day", "cta": "Book now"},
+      "assets": [{"role": "product", "description": "Exact approved vehicle model", "required": true, "preserve_identity": true}, {"role": "brand_logo", "description": "Rental-company logo", "required": true, "preserve_identity": true}],
+      "professional_references": [{"source": "Behance curated projects", "url": "https://www.behance.net/search/projects?search=car%20rental%20advertising", "use_for": "Compare vehicle fidelity, offer clarity and conversion hierarchy.", "copy_or_brand_source": false}],
+      "expected_marketing_strategy": {"positioning": "predictable mobility immediately after arrival", "single_minded_message": "Your airport car is ready at a clear daily price", "desired_reaction": "confidence", "cta_strategy": "immediate booking"},
+      "expected_constraints": ["Use the exact vehicle and logo", "Price terms must not be changed", "No unsupported cheapest or guaranteed claims"],
+      "quality_labels": [{"dimension": "product_fidelity", "minimum_score": 9.5, "professional_standard": "Vehicle model, logo and body geometry remain exact.", "failure_signals": ["wrong model", "distorted vehicle", "fake badge"]}, {"dimension": "marketing_effectiveness", "minimum_score": 9, "professional_standard": "Price, airport convenience and booking action are instantly clear.", "failure_signals": ["buried price", "vague benefit"]}, {"dimension": "platform_fit", "minimum_score": 8.5, "professional_standard": "Critical booking information survives feed-scale viewing.", "failure_signals": ["tiny terms", "CTA outside safe area"]}]
+    },
+    {
+      "slug": "saas-workflow-trial",
+      "category": "saas",
+      "title": "Workflow SaaS free trial",
+      "brief": {"goal": "trial signups", "audience": "operations managers", "platform": "LinkedIn", "offer": "14-day free trial", "cta": "Start free trial"},
+      "assets": [{"role": "product_ui", "description": "Approved dashboard screenshot", "required": true, "preserve_identity": true}, {"role": "brand_logo", "description": "SaaS logo", "required": true, "preserve_identity": true}],
+      "professional_references": [{"source": "Behance curated projects", "url": "https://www.behance.net/search/projects?search=saas%20social%20campaign", "use_for": "Compare B2B clarity, UI presentation and credible product storytelling.", "copy_or_brand_source": false}],
+      "expected_marketing_strategy": {"positioning": "less coordination overhead", "single_minded_message": "Turn scattered work into one visible workflow", "desired_reaction": "relief and control", "cta_strategy": "risk-free trial"},
+      "expected_constraints": ["Do not fabricate UI features", "Keep screenshot text truthful", "Avoid unsupported productivity percentages"],
+      "quality_labels": [{"dimension": "marketing_effectiveness", "minimum_score": 9, "professional_standard": "Pain, product value and trial action read without explanation.", "failure_signals": ["feature list without value", "generic transformation claim"]}, {"dimension": "product_fidelity", "minimum_score": 9, "professional_standard": "Real UI remains recognizable and undistorted.", "failure_signals": ["invented controls", "unreadable UI"]}, {"dimension": "audience_fit", "minimum_score": 8.5, "professional_standard": "Tone and proof match a pragmatic B2B decision-maker.", "failure_signals": ["consumer hype", "vague AI language"]}]
+    },
+    {
+      "slug": "technology-device-launch",
+      "category": "technology",
+      "title": "Consumer device launch",
+      "brief": {"goal": "preorders", "audience": "early adopters", "platform": "Instagram Feed", "offer": "new compact smart speaker", "cta": "Preorder now"},
+      "assets": [{"role": "product", "description": "Exact device renders from approved angles", "required": true, "preserve_identity": true}, {"role": "brand_logo", "description": "Technology brand mark", "required": true, "preserve_identity": true}],
+      "professional_references": [{"source": "Behance curated projects", "url": "https://www.behance.net/search/projects?search=technology%20product%20launch", "use_for": "Compare launch drama, industrial-design fidelity and premium restraint.", "copy_or_brand_source": false}],
+      "expected_marketing_strategy": {"positioning": "powerful sound with a smaller physical footprint", "single_minded_message": "Big sound, compact presence", "desired_reaction": "desire and technical confidence", "cta_strategy": "preorder"},
+      "expected_constraints": ["Preserve industrial design", "No invented specifications", "No fake interface or certification marks"],
+      "quality_labels": [{"dimension": "product_fidelity", "minimum_score": 9.5, "professional_standard": "Materials, ports, silhouette and scale match the approved device.", "failure_signals": ["warped geometry", "invented controls"]}, {"dimension": "creative_concept", "minimum_score": 9, "professional_standard": "The compact-power proposition is expressed through one ownable visual idea.", "failure_signals": ["generic gradient pedestal", "feature collage"]}, {"dimension": "overall_polish", "minimum_score": 9, "professional_standard": "Lighting and detail withstand premium launch scrutiny.", "failure_signals": ["AI artifacts", "cheap reflections"]}]
+    },
+    {
+      "slug": "fashion-capsule-drop",
+      "category": "fashion",
+      "title": "Limited fashion capsule",
+      "brief": {"goal": "sales", "audience": "style-led young adults", "platform": "Instagram Feed", "offer": "limited capsule drop", "cta": "Shop the drop"},
+      "assets": [{"role": "garment", "description": "Approved garment photography", "required": true, "preserve_identity": true}, {"role": "brand_logo", "description": "Fashion label wordmark", "required": true, "preserve_identity": true}],
+      "professional_references": [{"source": "Behance curated projects", "url": "https://www.behance.net/search/projects?search=fashion%20campaign", "use_for": "Compare editorial art direction, garment truth and cultural relevance.", "copy_or_brand_source": false}],
+      "expected_marketing_strategy": {"positioning": "scarce self-expression", "single_minded_message": "A limited silhouette for people who move first", "desired_reaction": "identity desire", "cta_strategy": "drop purchase"},
+      "expected_constraints": ["Preserve garment cut and material", "No invented collaborators", "Do not obscure the product for style"],
+      "quality_labels": [{"dimension": "brand_fit", "minimum_score": 9, "professional_standard": "Art direction feels editorial and specific to the label.", "failure_signals": ["generic luxury styling", "trend imitation"]}, {"dimension": "product_fidelity", "minimum_score": 9, "professional_standard": "Garment construction, color and texture remain truthful.", "failure_signals": ["changed cut", "fabric artifacts"]}, {"dimension": "differentiation", "minimum_score": 8.5, "professional_standard": "The drop owns a recognizable visual attitude.", "failure_signals": ["template composition", "stock pose"]}]
+    },
+    {
+      "slug": "beauty-serum-proof",
+      "category": "beauty",
+      "title": "Skincare serum consideration",
+      "brief": {"goal": "sales", "audience": "ingredient-aware skincare buyers", "platform": "Instagram Feed", "offer": "hydrating serum", "cta": "Explore the formula"},
+      "assets": [{"role": "product_pack", "description": "Approved bottle and carton packshot", "required": true, "preserve_identity": true}, {"role": "brand_logo", "description": "Beauty brand mark", "required": true, "preserve_identity": true}],
+      "professional_references": [{"source": "Behance curated projects", "url": "https://www.behance.net/search/projects?search=skincare%20campaign", "use_for": "Compare cosmetic retouching, pack fidelity and claim restraint.", "copy_or_brand_source": false}],
+      "expected_marketing_strategy": {"positioning": "credible daily hydration without exaggerated promises", "single_minded_message": "Focused hydration in a disciplined formula", "desired_reaction": "trust and product curiosity", "cta_strategy": "formula exploration"},
+      "expected_constraints": ["Preserve packaging text and shape", "No medical or guaranteed outcome claims", "Do not fabricate ingredients"],
+      "quality_labels": [{"dimension": "product_fidelity", "minimum_score": 9.5, "professional_standard": "Bottle, cap, label and carton stay exact and premium.", "failure_signals": ["garbled label", "asymmetric bottle"]}, {"dimension": "brand_fit", "minimum_score": 9, "professional_standard": "Clinical and sensory cues remain balanced for the approved brand.", "failure_signals": ["generic laboratory scene", "unearned luxury cues"]}, {"dimension": "overall_polish", "minimum_score": 9, "professional_standard": "Retouching, liquid texture and highlights are artifact-free.", "failure_signals": ["impossible droplets", "plastic highlights"]}]
+    },
+    {
+      "slug": "real-estate-open-house",
+      "category": "real-estate",
+      "title": "Premium open-house lead generation",
+      "brief": {"goal": "qualified leads", "audience": "urban home buyers", "platform": "Instagram Feed", "offer": "Saturday open house", "cta": "Book a viewing"},
+      "assets": [{"role": "property", "description": "Approved property photography", "required": true, "preserve_identity": true}, {"role": "agency_logo", "description": "Brokerage logo", "required": true, "preserve_identity": true}],
+      "professional_references": [{"source": "Behance curated projects", "url": "https://www.behance.net/search/projects?search=real%20estate%20campaign", "use_for": "Compare architectural truth, premium hierarchy and lead clarity.", "copy_or_brand_source": false}],
+      "expected_marketing_strategy": {"positioning": "a concrete opportunity to experience the property", "single_minded_message": "See the space in person this Saturday", "desired_reaction": "qualified interest", "cta_strategy": "viewing appointment"},
+      "expected_constraints": ["Do not alter architecture or view", "Do not invent amenities or price", "Date and location must remain accurate"],
+      "quality_labels": [{"dimension": "product_fidelity", "minimum_score": 9.5, "professional_standard": "The property remains documentary and spatially truthful.", "failure_signals": ["added pool", "warped architecture"]}, {"dimension": "marketing_effectiveness", "minimum_score": 9, "professional_standard": "Property appeal, event timing and viewing action are immediate.", "failure_signals": ["missing date", "generic dream-home copy"]}, {"dimension": "typography", "minimum_score": 8.5, "professional_standard": "Details remain calm, premium and legible over photography.", "failure_signals": ["low contrast", "crowded listing data"]}]
+    },
+    {
+      "slug": "fitness-membership-reset",
+      "category": "fitness",
+      "title": "Gym membership acquisition",
+      "brief": {"goal": "memberships", "audience": "busy professionals restarting fitness", "platform": "Instagram Feed", "offer": "first week free", "cta": "Start your week"},
+      "assets": [{"role": "location", "description": "Approved gym interior and coaching photography", "required": true, "preserve_identity": true}, {"role": "brand_logo", "description": "Gym logo", "required": true, "preserve_identity": true}],
+      "professional_references": [{"source": "Behance curated projects", "url": "https://www.behance.net/search/projects?search=fitness%20campaign", "use_for": "Compare motivational credibility, motion and membership conversion.", "copy_or_brand_source": false}],
+      "expected_marketing_strategy": {"positioning": "a realistic restart supported by coaching", "single_minded_message": "Restart with one supported week", "desired_reaction": "achievable motivation", "cta_strategy": "trial activation"},
+      "expected_constraints": ["No guaranteed body transformation", "Represent training safely", "Offer terms must remain exact"],
+      "quality_labels": [{"dimension": "audience_fit", "minimum_score": 9, "professional_standard": "Motivation feels attainable rather than intimidating.", "failure_signals": ["shame language", "elite-athlete mismatch"]}, {"dimension": "marketing_effectiveness", "minimum_score": 9, "professional_standard": "Restart tension, support and free-week action form one message.", "failure_signals": ["generic motivation", "buried offer"]}, {"dimension": "creative_concept", "minimum_score": 8.5, "professional_standard": "Movement reinforces the restart idea without cliché.", "failure_signals": ["before-after trope", "stock flex pose"]}]
+    },
+    {
+      "slug": "retail-weekend-offer",
+      "category": "retail",
+      "title": "Weekend retail promotion",
+      "brief": {"goal": "store visits", "audience": "value-conscious local shoppers", "platform": "Instagram Feed", "offer": "20% selected homeware this weekend", "cta": "Visit in store"},
+      "assets": [{"role": "products", "description": "Approved promotional product packshots", "required": true, "preserve_identity": true}, {"role": "retailer_logo", "description": "Retail brand logo", "required": true, "preserve_identity": true}],
+      "professional_references": [{"source": "Behance curated projects", "url": "https://www.behance.net/search/projects?search=retail%20promotion%20campaign", "use_for": "Compare promotional hierarchy, product grouping and brand consistency.", "copy_or_brand_source": false}],
+      "expected_marketing_strategy": {"positioning": "timely local value without discount clutter", "single_minded_message": "Selected homeware is 20% off this weekend", "desired_reaction": "store-visit intent", "cta_strategy": "visit in store"},
+      "expected_constraints": ["Discount scope and dates must be clear", "Preserve all product identities", "Do not imply storewide discount"],
+      "quality_labels": [{"dimension": "marketing_effectiveness", "minimum_score": 9.5, "professional_standard": "Discount, scope, timing and action are unambiguous.", "failure_signals": ["misleading storewide impression", "missing timing"]}, {"dimension": "visual_hierarchy", "minimum_score": 9, "professional_standard": "Offer leads, products support and CTA closes the path.", "failure_signals": ["price clutter", "logo dominates offer"]}, {"dimension": "product_fidelity", "minimum_score": 8.5, "professional_standard": "Every promoted item remains accurate and shoppable.", "failure_signals": ["changed colors", "merged products"]}]
+    },
+    {
+      "slug": "hospitality-weekend-escape",
+      "category": "hospitality",
+      "title": "Boutique hotel weekend escape",
+      "brief": {"goal": "direct bookings", "audience": "couples seeking a short escape", "platform": "Instagram Feed", "offer": "two-night weekend package", "cta": "Check availability"},
+      "assets": [{"role": "property", "description": "Approved room and destination photography", "required": true, "preserve_identity": true}, {"role": "hotel_logo", "description": "Hotel wordmark", "required": true, "preserve_identity": true}],
+      "professional_references": [{"source": "Behance curated projects", "url": "https://www.behance.net/search/projects?search=hotel%20campaign", "use_for": "Compare destination desire, property truth and direct-booking sophistication.", "copy_or_brand_source": false}],
+      "expected_marketing_strategy": {"positioning": "an intimate reset grounded in a real place", "single_minded_message": "Two nights that feel meaningfully away", "desired_reaction": "escape desire and trust", "cta_strategy": "availability check"},
+      "expected_constraints": ["Do not alter rooms, views or amenities", "Do not invent package inclusions", "Preserve the hotel identity"],
+      "quality_labels": [{"dimension": "product_fidelity", "minimum_score": 9.5, "professional_standard": "Property imagery remains truthful and recognizable.", "failure_signals": ["invented view", "altered room"]}, {"dimension": "brand_fit", "minimum_score": 9, "professional_standard": "Atmosphere expresses this hotel rather than generic luxury.", "failure_signals": ["stock resort cues", "brand-tone drift"]}, {"dimension": "marketing_effectiveness", "minimum_score": 8.5, "professional_standard": "Escape value, package and availability action are coherent.", "failure_signals": ["mood without offer", "unclear booking path"]}]
+    }
+  ]
+}
