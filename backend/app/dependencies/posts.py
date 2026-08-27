@@ -8,6 +8,9 @@ from app.core.config import get_settings
 from app.dependencies.conversations import ConversationServiceDependency
 from app.dependencies.providers import get_provider_bundle
 from app.infrastructure.database.repositories.assets import SQLAlchemyAssetRepository
+from app.infrastructure.database.repositories.post_benchmarks import (
+    SQLAlchemyBenchmarkReviewRepository,
+)
 from app.infrastructure.database.repositories.post_conversation_contexts import (
     SQLAlchemyPostConversationContextRepository,
 )
@@ -22,7 +25,12 @@ from app.infrastructure.database.session import get_db_transaction
 from app.modules.posts.chat import ConversationResponder, ConversationRouter
 from app.modules.posts.domain.entities import PostScope
 from app.modules.posts.providers import ProviderBundle
-from app.modules.posts.services import ConceptMemoryService, PostsService, SemanticMemoryService
+from app.modules.posts.services import (
+    BenchmarkService,
+    ConceptMemoryService,
+    PostsService,
+    SemanticMemoryService,
+)
 from app.modules.posts.services.chat import PostChatService
 
 
@@ -42,6 +50,13 @@ def get_posts_service(
         generation_job_max_attempts=settings.generation_job_max_attempts,
         generation_job_timeout_seconds=settings.generation_job_timeout_seconds,
     )
+
+
+def get_benchmark_service(
+    session: Annotated[AsyncSession, Depends(get_db_transaction)],
+    posts: Annotated[PostsService, Depends(get_posts_service)],
+) -> BenchmarkService:
+    return BenchmarkService(SQLAlchemyBenchmarkReviewRepository(session), posts)
 
 
 def get_post_chat_service(
@@ -87,6 +102,7 @@ def get_post_memory_scope_resolver(
 
 PostScopeDependency = Annotated[PostScope, Depends(get_post_scope)]
 PostsServiceDependency = Annotated[PostsService, Depends(get_posts_service)]
+BenchmarkServiceDependency = Annotated[BenchmarkService, Depends(get_benchmark_service)]
 PostChatServiceDependency = Annotated[PostChatService, Depends(get_post_chat_service)]
 SemanticMemoryServiceDependency = Annotated[
     SemanticMemoryService,

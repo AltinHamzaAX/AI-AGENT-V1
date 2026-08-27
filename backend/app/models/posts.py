@@ -392,3 +392,63 @@ class PostConversationContextModel(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class PostBenchmarkReviewModel(Base):
+    """Immutable expert judgement paired with the server-owned AI score."""
+
+    __tablename__ = "post_benchmark_reviews"
+    __table_args__ = (
+        CheckConstraint("human_score >= 1 AND human_score <= 10", name="valid_human_score"),
+        CheckConstraint("ai_score >= 1 AND ai_score <= 10", name="valid_ai_score"),
+        CheckConstraint(
+            "score_difference >= -9 AND score_difference <= 9",
+            name="valid_score_difference",
+        ),
+        CheckConstraint(
+            "expertise IN ('designer', 'marketing_expert', 'creative_director')",
+            name="valid_benchmark_reviewer_expertise",
+        ),
+        CheckConstraint("length(render_checksum) = 64", name="benchmark_render_checksum"),
+        UniqueConstraint(
+            "benchmark_slug",
+            "benchmark_version",
+            "generation_id",
+            "reviewer_user_id",
+            name="uq_post_benchmark_review_submission",
+        ),
+        Index("ix_post_benchmark_reviews_category", "category", "created_at"),
+        Index(
+            "ix_post_benchmark_reviews_scope",
+            "reviewer_user_id",
+            "project_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    benchmark_slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    benchmark_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    generation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("post_generations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reviewer_user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    expertise: Mapped[str] = mapped_column(String(32), nullable=False)
+    human_score: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
+    ai_score: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
+    ai_dimension_scores: Mapped[dict[str, float]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=False
+    )
+    score_difference: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    feedback: Mapped[str] = mapped_column(Text, nullable=False)
+    dimension_reviews: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=False
+    )
+    render_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

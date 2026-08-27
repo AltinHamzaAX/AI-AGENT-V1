@@ -41,9 +41,24 @@ class SemanticContractHardFailError(RuntimeError):
         self.violations = violations
 
 
+class BenchmarkCaseNotFoundError(LookupError):
+    pass
+
+
+class BenchmarkReviewConflictError(RuntimeError):
+    pass
+
+
+class BenchmarkGenerationNotReadyError(RuntimeError):
+    pass
+
+
 __all__ = [
     "AgentNotFoundError",
     "AgentToolFrameworkError",
+    "BenchmarkCaseNotFoundError",
+    "BenchmarkGenerationNotReadyError",
+    "BenchmarkReviewConflictError",
     "ChatMessageNotFoundError",
     "DuplicateRegistrationError",
     "InvocationFailedError",
