@@ -33,6 +33,7 @@ from app.modules.posts.orchestration.marketing_strategy import (
     MarketingStrategyStageHandler,
 )
 from app.modules.posts.orchestration.production import ProductionStageHandler
+from app.modules.posts.orchestration.quality_scoring import QualityScoringStageHandler
 from app.modules.posts.orchestration.scene_purity import ScenePurityStageHandler
 from app.modules.posts.orchestration.supervisor import (
     PostSupervisorExecutor,
@@ -57,6 +58,7 @@ __all__ = [
     "DesignSpecStageHandler",
     "DesignCriticStageHandler",
     "VerificationStageHandler",
+    "QualityScoringStageHandler",
     "CopywritingStageHandler",
     "ExternalResearchStageHandler",
     "GenerationPlanningStageHandler",
