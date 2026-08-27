@@ -47,6 +47,7 @@ class PostWorkflowSection(StrEnum):
     SCENE_PURITY = "scene_purity"
     POST_DRAFT = "post_draft"
     QUALITY = "quality"
+    DESIGN_QUALITY = "design_quality"
     REVISION_HISTORY = "revision_history"
 
 

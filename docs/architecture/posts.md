@@ -714,6 +714,14 @@ response contracts include provider/model identity where relevant but contain no
 SDK-specific objects. Technical adapters live under `app/integrations` or
 `app/infrastructure`; provider SDKs and HTTP response shapes never enter agents.
 
+A vision request may carry the JSON Schema its answer must satisfy. Adapters
+that support constrained decoding enforce it during generation; the rest ignore
+it and rely on prompt shaping, so the schema is a guarantee where it can be one
+and never a requirement on the port. This is what makes a structured vision gate
+affordable on a local model: asked in prose, a reasoning vision model spends an
+order of magnitude more tokens on its private trace than on the answer, and the
+gate exhausts its request timeout before replying.
+
 The application composition root selects each adapter independently from
 environment configuration. Current adapters support Ollama for text, vision,
 and embeddings; Hugging Face Inference Providers for image generation; Tavily

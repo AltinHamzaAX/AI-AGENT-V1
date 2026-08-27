@@ -20,6 +20,7 @@ from app.modules.posts.orchestration.copywriting import CopywritingStageHandler
 from app.modules.posts.orchestration.creative_direction import (
     CreativeDirectionStageHandler,
 )
+from app.modules.posts.orchestration.design_critic import DesignCriticStageHandler
 from app.modules.posts.orchestration.design_spec import DesignSpecStageHandler
 from app.modules.posts.orchestration.external_research import (
     ExternalResearchStageHandler,
@@ -53,6 +54,7 @@ __all__ = [
     "CompositionStageHandler",
     "CreativeDirectionStageHandler",
     "DesignSpecStageHandler",
+    "DesignCriticStageHandler",
     "CopywritingStageHandler",
     "ExternalResearchStageHandler",
     "GenerationPlanningStageHandler",

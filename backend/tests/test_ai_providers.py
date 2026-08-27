@@ -202,6 +202,7 @@ async def test_ollama_adapters_use_provider_neutral_contracts() -> None:
     assert llm_response.input_tokens == 4 and llm_response.output_tokens == 2
     assert vision_response.data == {"objects": ["product"]}
     assert requests[1]["messages"][0]["images"] == [base64.b64encode(b"binary").decode("ascii")]
+    assert requests[1]["think"] is False
     assert requests[1]["options"]["num_ctx"] == 16_384
     assert embedding_response.vectors == ((0.1, 0.2), (0.3, 0.4))
 
@@ -213,7 +214,13 @@ async def test_ollama_vision_rejects_an_empty_answer_instead_of_certifying_it() 
             200,
             json={
                 "model": "qwen-vl",
-                "message": {"role": "assistant", "content": "   "},
+                # An unconstrained answer carries no guarantee, so its reasoning
+                # trace is never promoted to the answer.
+                "message": {
+                    "role": "assistant",
+                    "content": "   ",
+                    "thinking": "The image seems to show something.",
+                },
             },
         )
 
@@ -223,6 +230,47 @@ async def test_ollama_vision_rejects_an_empty_answer_instead_of_certifying_it() 
             await vision.analyze(
                 VisionRequest(image=b"binary", mime_type="image/png", prompt="analyze")
             )
+
+
+@pytest.mark.asyncio
+async def test_ollama_vision_constrains_the_answer_and_recovers_a_misfiled_one() -> None:
+    """Constrained decoding is what keeps a structured vision gate inside its timeout.
+
+    A grammar-constrained answer carries none of the markers Ollama's renderer
+    splits on, so some vision models report the whole answer as the reasoning
+    trace. The grammar still guarantees what it contains.
+    """
+    payloads: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        return httpx.Response(
+            200,
+            json={
+                "model": payload["model"],
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "thinking": '{"verdict": "pass"}',
+                },
+            },
+        )
+
+    schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        vision = OllamaVisionProvider(base_url="http://ollama.test", model="qwen-vl", client=client)
+        response = await vision.analyze(
+            VisionRequest(
+                image=b"binary",
+                mime_type="image/png",
+                prompt="analyze",
+                response_schema=schema,
+            )
+        )
+
+    assert payloads[0]["format"] == schema
+    assert response.data == {"verdict": "pass"}
 
 
 @pytest.mark.asyncio
