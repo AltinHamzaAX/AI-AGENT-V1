@@ -31,6 +31,7 @@ class SupervisorStage(StrEnum):
     PRODUCTION = "production"
     SCENE_PURITY = "scene_purity"
     COMPOSITION = "composition"
+    VERIFICATION = "verification"
     QUALITY_REVIEW = "quality_review"
     DESIGN_REVIEW = "design_review"
 
@@ -283,8 +284,22 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
             output_sections=(PostWorkflowSection.POST_DRAFT,),
         ),
         SupervisorStagePolicy(
-            SupervisorStage.QUALITY_REVIEW,
+            SupervisorStage.VERIFICATION,
             dependencies=(SupervisorStage.COMPOSITION,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.POST_DRAFT,
+            ),
+            # Hard gates run before anything scores the post, so a blocked render
+            # never costs a marketing or design review, and no score can be
+            # pointed at afterwards as a reason to let it through.
+            output_sections=(PostWorkflowSection.VERIFICATION,),
+        ),
+        SupervisorStagePolicy(
+            SupervisorStage.QUALITY_REVIEW,
+            dependencies=(SupervisorStage.VERIFICATION,),
             required_sections=(
                 PostWorkflowSection.SEMANTIC_CONTRACT,
                 PostWorkflowSection.MARKETING_STRATEGY,
@@ -334,6 +349,18 @@ class PostSupervisor:
         progress = _progress(state)
         quality = state[PostWorkflowSection.QUALITY.value]
         design_quality = state[PostWorkflowSection.DESIGN_QUALITY.value]
+        verification = state[PostWorkflowSection.VERIFICATION.value]
+        # Read before any score, and terminal: a hard verification gate is not
+        # weighed against how good the post looks, so nothing below can revive a
+        # render that failed one.
+        if verification.get("decision") == "BLOCKED":
+            return SupervisorDecision(
+                action=SupervisorAction.STOP,
+                next_stage=None,
+                reason="hard verification gate blocked the workflow",
+                state_requirements=(PostWorkflowSection.VERIFICATION,),
+                terminal=True,
+            )
         if quality.get("hard_fail") is True or quality.get("decision") in {
             "BLOCKED",
             "REJECT",
@@ -436,6 +463,16 @@ class PostSupervisor:
                 reason="workflow dependency graph cannot make progress",
                 terminal=True,
             )
+        verification_enabled = any(
+            policy.stage is SupervisorStage.VERIFICATION for policy in self._plan.stages
+        )
+        if verification_enabled and verification.get("decision") != "PASS":
+            return SupervisorDecision(
+                action=SupervisorAction.STOP,
+                next_stage=SupervisorStage.VERIFICATION,
+                reason="every hard verification gate must pass before completion",
+                state_requirements=(PostWorkflowSection.VERIFICATION,),
+            )
         if quality.get("decision") != "PASS":
             return SupervisorDecision(
                 action=SupervisorAction.STOP,
@@ -458,6 +495,7 @@ class PostSupervisor:
             next_stage=None,
             reason="workflow complete and quality approved",
             state_requirements=(
+                PostWorkflowSection.VERIFICATION,
                 PostWorkflowSection.QUALITY,
                 PostWorkflowSection.DESIGN_QUALITY,
             ),
