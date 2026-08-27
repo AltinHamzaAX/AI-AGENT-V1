@@ -184,6 +184,7 @@ def test_supervisor_requires_assets_design_and_contract() -> None:
     policy = DEFAULT_SUPERVISOR_PLAN.get(SupervisorStage.GENERATION_PLANNING)
     assert set(policy.required_sections) == {
         PostWorkflowSection.DESIGN_SPEC,
+        PostWorkflowSection.REFERENCE_VALIDATION,
         PostWorkflowSection.SEMANTIC_CONTRACT,
         PostWorkflowSection.ASSETS,
     }
