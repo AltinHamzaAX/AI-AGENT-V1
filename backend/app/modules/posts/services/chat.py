@@ -82,6 +82,7 @@ class PostChatTurn:
     context: ConversationContext
     questions: tuple[str, ...] = ()
     workflow: ChatWorkflowStart | None = None
+    generation_ready: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,7 +221,12 @@ class PostChatService:
             content=answer,
             metadata={
                 **provider_metadata,
-                "chat": _turn_metadata(routed, classified.reason, workflow),
+                "chat": _turn_metadata(
+                    routed,
+                    classified.reason,
+                    workflow,
+                    generation_ready=context.generation_ready,
+                ),
             },
         )
         saved = await self._contexts.save(
@@ -236,6 +242,7 @@ class PostChatService:
             context=saved,
             questions=tuple(routed.questions),
             workflow=workflow,
+            generation_ready=saved.generation_ready,
         )
 
     async def start_generation(
@@ -567,11 +574,14 @@ def _turn_metadata(
     routed: RoutedTurn,
     reason: str,
     workflow: ChatWorkflowStart | None,
+    *,
+    generation_ready: bool,
 ) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "intent": routed.intent.value,
         "action": routed.action.value,
         "reason": reason or routed.reason,
+        "generation_ready": generation_ready,
     }
     if routed.questions:
         metadata["questions"] = list(routed.questions)

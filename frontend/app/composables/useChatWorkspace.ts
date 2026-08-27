@@ -1,5 +1,6 @@
 import type {
   ChatMessage,
+  ChatActivityState,
   ChatProgress,
   ChatState,
   ChatTurn,
@@ -11,7 +12,7 @@ import type {
   GenerationJob,
   PendingAttachment,
 } from '~/types/chat'
-import { POST_PROGRESS } from '~/types/chat'
+import { POST_PROGRESS, POST_STAGE_TO_PROGRESS } from '~/types/chat'
 
 const EMPTY_BY_TYPE = (): Record<ConversationType, never[]> => ({ post: [], campaign: [] })
 const RUNNING_JOB = new Set(['queued', 'running', 'retry_scheduled'])
@@ -33,6 +34,7 @@ export function useChatWorkspace(type: ConversationType) {
   const messages = useState<Record<string, ChatMessage[]>>('chat-messages', () => ({}))
   const contexts = useState<Record<string, ConversationContext>>('chat-contexts', () => ({}))
   const progress = useState<Record<string, ChatProgress>>('chat-progress', () => ({}))
+  const activity = useState<Record<string, ChatActivityState>>('chat-activity', () => ({}))
   const tracked = useState<string[]>('chat-tracked-generations', () => [])
 
   const busy = ref(false)
@@ -70,6 +72,16 @@ export function useChatWorkspace(type: ConversationType) {
     try {
       const body = await response.json() as { detail?: unknown }
       if (typeof body.detail === 'string') return body.detail
+      if (body.detail && typeof body.detail === 'object' && !Array.isArray(body.detail)) {
+        const detail = body.detail as { message?: unknown }
+        if (typeof detail.message === 'string') return detail.message
+      }
+      if (Array.isArray(body.detail)) {
+        const messages = body.detail
+          .map(item => item && typeof item === 'object' ? (item as { msg?: unknown }).msg : null)
+          .filter((message): message is string => typeof message === 'string')
+        if (messages.length) return messages.join('; ')
+      }
     }
     catch {
       // A non-JSON body carries nothing better than the status itself.
@@ -122,15 +134,30 @@ export function useChatWorkspace(type: ConversationType) {
       revises_generation_id: null,
     }
     if (RUNNING_JOB.has(state.generation.job_status)) {
+      setActivity(id, 'generating')
       void track(id, workflow)
       return
     }
     if (state.generation.job_status === 'completed') {
+      setActivity(id, 'completed')
       setProgress(id, {
         running: false,
         stage: POST_PROGRESS.at(-1)![0],
         result: true,
         error: '',
+        artifacts: state.artifacts,
+      })
+      return
+    }
+    if (state.generation.job_status === 'failed' || state.generation.job_status === 'dead') {
+      const base = `${api}/posts/${workflow.post_id}/generations/${workflow.generation_id}`
+      const job = await request<GenerationJob>(`${base}/job`)
+      setActivity(id, 'failed')
+      setProgress(id, {
+        running: false,
+        stage: POST_PROGRESS[0][0],
+        result: false,
+        error: await failureReason(base, job),
         artifacts: state.artifacts,
       })
     }
@@ -146,6 +173,7 @@ export function useChatWorkspace(type: ConversationType) {
   async function send(id: string, content: string): Promise<ChatTurn | null> {
     busy.value = true
     error.value = null
+    setActivity(id, 'sending')
     const pending = optimisticMessage(id, content)
     try {
       if (type !== 'post') {
@@ -155,6 +183,7 @@ export function useChatWorkspace(type: ConversationType) {
         })
         await uploadAttachments(message.id)
         replaceMessage(id, pending.id, [message])
+        setActivity(id, 'idle')
         return null
       }
       let turn: ChatTurn
@@ -164,37 +193,39 @@ export function useChatWorkspace(type: ConversationType) {
           body: { content, role: 'user', metadata: {} },
         })
         await uploadAttachments(message.id)
+        setActivity(id, 'thinking')
         turn = await request<ChatTurn>(`${api}/posts/conversations/${id}/turns`, {
           method: 'POST',
           body: { message_id: message.id },
         })
       }
       else {
+        setActivity(id, 'thinking')
         turn = await request<ChatTurn>(`${api}/posts/conversations/${id}/turns`, {
           method: 'POST',
           body: { content, metadata: {} },
         })
       }
+      setActivity(id, 'responding')
       replaceMessage(id, pending.id, [turn.user, turn.assistant])
       contexts.value = { ...contexts.value, [id]: turn.context }
-      if (turn.workflow) void track(id, turn.workflow)
+      await nextTick()
+      if (turn.workflow) {
+        setActivity(id, 'generating')
+        void track(id, turn.workflow)
+      }
+      else setActivity(id, 'idle')
       return turn
     }
     catch (cause) {
       removeMessage(id, pending.id)
       error.value = messageOf(cause, 'Message failed.')
+      setActivity(id, 'failed')
       throw cause
     }
     finally {
       busy.value = false
     }
-  }
-
-  /** Start generation on the client's explicit command rather than by intent. */
-  async function startGeneration(id: string) {
-    const workflow = await request<ChatWorkflow>(`${api}/posts/conversations/${id}/generations`, { method: 'POST' })
-    void track(id, workflow)
-    return workflow
   }
 
   /**
@@ -214,6 +245,7 @@ export function useChatWorkspace(type: ConversationType) {
       error: '',
       artifacts: [],
     })
+    setActivity(conversationId, 'generating')
     const deadline = Date.now() + POLL_DEADLINE_MS
     try {
       while (Date.now() < deadline) {
@@ -226,6 +258,7 @@ export function useChatWorkspace(type: ConversationType) {
             result: true,
             artifacts: await request<GenerationArtifact[]>(`${base}/artifacts`),
           })
+          setActivity(conversationId, 'completed')
           return
         }
         if (job.status === 'failed' || job.status === 'dead') {
@@ -237,6 +270,7 @@ export function useChatWorkspace(type: ConversationType) {
     }
     catch (cause) {
       patchProgress(conversationId, { running: false, error: messageOf(cause, 'Generation failed.') })
+      setActivity(conversationId, 'failed')
     }
     finally {
       patchProgress(conversationId, { running: false })
@@ -268,7 +302,7 @@ export function useChatWorkspace(type: ConversationType) {
     try {
       const state = await request<{ state?: { supervisor?: { current_stage?: unknown } } }>(`${base}/state`)
       const stage = state.state?.supervisor?.current_stage
-      return typeof stage === 'string' && POST_PROGRESS.some(item => item[0] === stage) ? stage : fallback
+      return typeof stage === 'string' && stage in POST_STAGE_TO_PROGRESS ? stage : fallback
     }
     catch {
       // Workflow state is initialized asynchronously; job status is authoritative.
@@ -286,15 +320,45 @@ export function useChatWorkspace(type: ConversationType) {
     progress.value = { ...progress.value, [conversationId]: { ...current, ...value } }
   }
 
+  function setActivity(conversationId: string, value: ChatActivityState) {
+    activity.value = { ...activity.value, [conversationId]: value }
+  }
+
   async function uploadAttachments(messageId: string) {
     for (const item of attachments.value) {
       const body = new FormData()
       body.append('message_id', messageId)
-      body.append('role', 'reference')
-      body.append('file', item.file)
+      // The Asset Intelligence stage determines the precise semantic role.
+      // Uploads enter through the valid neutral role accepted by the API.
+      body.append('role', 'supporting_asset')
+      body.append('file', await normalizeImageMimeType(item.file))
       await request(`${api}/assets`, { method: 'POST', body })
     }
     clearAttachments()
+  }
+
+  async function normalizeImageMimeType(file: File): Promise<File> {
+    const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer())
+    let detected: string | null = null
+    if (bytes.length >= 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+      detected = 'image/jpeg'
+    }
+    else if (
+      bytes.length >= 8
+      && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47
+      && bytes[4] === 0x0D && bytes[5] === 0x0A && bytes[6] === 0x1A && bytes[7] === 0x0A
+    ) {
+      detected = 'image/png'
+    }
+    else if (
+      bytes.length >= 12
+      && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF'
+      && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP'
+    ) {
+      detected = 'image/webp'
+    }
+    if (!detected || detected === file.type.toLowerCase()) return file
+    return new File([file], file.name, { type: detected, lastModified: file.lastModified })
   }
 
   function optimisticMessage(conversationId: string, content: string): ChatMessage {
@@ -362,6 +426,7 @@ export function useChatWorkspace(type: ConversationType) {
     messages,
     contexts,
     progress,
+    activity,
     attachments,
     busy,
     error,
@@ -369,7 +434,6 @@ export function useChatWorkspace(type: ConversationType) {
     createConversation,
     open,
     send,
-    startGeneration,
     addFiles,
     removeAttachment,
     clearAttachments,

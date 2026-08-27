@@ -260,6 +260,8 @@ def test_explicit_wording_is_recognized_without_false_positives() -> None:
     assert explicit_generation_request("Ma krijo një post për Instagram")
     assert explicit_generation_request("gjeneroje postin tani")
     assert explicit_generation_request("Generate the post please")
+    assert explicit_generation_request("Kam njÃ« kafiteri dhe dua njÃ« post.")
+    assert explicit_generation_request("I want an Instagram post for my cafe.")
     assert not explicit_generation_request("Kam një rent a car në Prishtinë.")
     assert not explicit_generation_request("Si mund të krijoj një post të mirë?")
     assert not explicit_generation_request("Dua ta promovoj Skoda Fabia.")
@@ -291,6 +293,31 @@ def test_router_generates_once_the_required_facts_are_known() -> None:
     )
     assert routed.intent is ChatIntent.GENERATE_POST
     assert routed.action.value == "generate"
+    assert context.generation_ready is True
+
+
+def test_pending_generation_rechecks_readiness_without_a_second_command() -> None:
+    context = ConversationContext().with_generation_request().merge(ContextUpdate(**_FULL_BRIEF))
+    routed = ChatIntentRouter().route(
+        proposed=ChatIntent.CLARIFICATION,
+        message="Skoda Fabia. Target diaspora. Instagram.",
+        context=context,
+    )
+
+    assert routed.intent is ChatIntent.GENERATE_POST
+    assert routed.action.value == "generate"
+
+
+def test_pending_generation_does_not_convert_general_conversation_into_work() -> None:
+    context = ConversationContext().with_generation_request().merge(ContextUpdate(**_FULL_BRIEF))
+    routed = ChatIntentRouter().route(
+        proposed=ChatIntent.GENERAL_CONVERSATION,
+        message="Faleminderit.",
+        context=context,
+    )
+
+    assert routed.intent is ChatIntent.GENERAL_CONVERSATION
+    assert routed.action.value == "reply"
 
 
 def test_context_keeps_earlier_facts_and_records_inference_separately() -> None:
@@ -415,6 +442,47 @@ async def test_missing_information_asks_instead_of_generating(
     assert turn["questions"]
     assert turn["workflow"] is None
     assert turn["assistant"]["metadata"]["chat"]["questions"] == turn["questions"]
+    assert turn["generation_ready"] is False
+    assert turn["context"]["generation_ready"] is False
+
+
+@pytest.mark.asyncio
+async def test_answering_missing_facts_automatically_starts_the_pending_request(
+    chat_api: tuple[AsyncClient, ScriptedLLM],
+) -> None:
+    client, llm = chat_api
+    headers = _headers()
+    conversation_id = await _conversation(client, headers)
+    llm.script(
+        _classification(
+            "GENERATE_POST",
+            context_updates={"business": "rent a car", "product_service": "Skoda Fabia"},
+        ),
+        _classification(
+            "CLARIFICATION",
+            context_updates={
+                "goal": "me shume rezervime",
+                "audience": "diaspora",
+                "cta_intent": "rezervo tani",
+                "platform": "Instagram",
+            },
+        ),
+    )
+
+    first = await _turn(client, headers, conversation_id, "Dua njÃ« post pÃ«r Skoda Fabia.")
+    second = await _turn(
+        client,
+        headers,
+        conversation_id,
+        "Target diaspora; dua mÃ« shumÃ« rezervime. Instagram. CTA rezervo tani.",
+    )
+
+    assert first["action"] == "ask"
+    assert first["generation_ready"] is False
+    assert second["intent"] == "GENERATE_POST"
+    assert second["action"] == "generate"
+    assert second["generation_ready"] is True
+    assert second["workflow"] is not None
 
 
 @pytest.mark.asyncio
