@@ -5,6 +5,7 @@ from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.dependencies.conversations import ConversationServiceDependency
 from app.dependencies.providers import get_provider_bundle
 from app.infrastructure.database.repositories.post_memory_scope import (
     SQLAlchemyPostMemoryScopeResolver,
@@ -17,6 +18,7 @@ from app.infrastructure.database.session import get_db_transaction
 from app.modules.posts.domain.entities import PostScope
 from app.modules.posts.providers import ProviderBundle
 from app.modules.posts.services import ConceptMemoryService, PostsService, SemanticMemoryService
+from app.modules.posts.services.chat import PostChatService
 
 
 def get_post_scope(
@@ -35,6 +37,13 @@ def get_posts_service(
         generation_job_max_attempts=settings.generation_job_max_attempts,
         generation_job_timeout_seconds=settings.generation_job_timeout_seconds,
     )
+
+
+def get_post_chat_service(
+    conversations: ConversationServiceDependency,
+    providers: Annotated[ProviderBundle, Depends(get_provider_bundle)],
+) -> PostChatService:
+    return PostChatService(conversations, providers.llm)
 
 
 def get_semantic_memory_service(
@@ -61,6 +70,7 @@ def get_post_memory_scope_resolver(
 
 PostScopeDependency = Annotated[PostScope, Depends(get_post_scope)]
 PostsServiceDependency = Annotated[PostsService, Depends(get_posts_service)]
+PostChatServiceDependency = Annotated[PostChatService, Depends(get_post_chat_service)]
 SemanticMemoryServiceDependency = Annotated[
     SemanticMemoryService,
     Depends(get_semantic_memory_service),

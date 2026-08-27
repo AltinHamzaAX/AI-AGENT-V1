@@ -824,6 +824,27 @@ marks only the latest pending instruction completed when its exact target stage
 finishes, invalidates that stage and its dependants, and sends the rebuilt draft
 through verification and scoring again.
 
+## Conversational Posts UI and section isolation
+
+The web application exposes two explicit workspaces: `/posts` and
+`/campaigns`, each with a conversation detail route ending in
+`/:conversationId`. A conversation persists a required `post` or `campaign`
+kind. Section-specific conversation APIs create the route's kind on the server,
+filter history by that kind and return `404` when an identifier is opened from
+the other section. The generic conversation boundary also requires an explicit
+type when listing. Posts additionally reject campaign conversations as Post
+sources, so route state cannot bypass the domain boundary.
+
+The Posts workspace supports messages, multiple image previews and uploads,
+generation, backend job polling, Supervisor-derived progress, terminal failure
+reporting and completed artifact metadata. Later revision requests stay in the
+same conversation and create another generation attempt for the same Post
+during the browser session. The UI reports completion only after the persisted
+generation job is complete; it never substitutes animated progress for backend
+state. Campaign conversations use their own API prefix and isolated client
+state, while generation remains deliberately unavailable until the Campaign
+Engine supplies its public boundary.
+
 ## Observability and execution tracing
 
 The Posts execution boundary records four trace kinds: `agent`, `tool`,

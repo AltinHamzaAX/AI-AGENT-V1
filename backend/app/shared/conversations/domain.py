@@ -12,6 +12,11 @@ class MessageRole(StrEnum):
     TOOL = "tool"
 
 
+class ConversationKind(StrEnum):
+    POST = "post"
+    CAMPAIGN = "campaign"
+
+
 @dataclass(frozen=True, slots=True)
 class ConversationScope:
     user_id: UUID
@@ -23,6 +28,7 @@ class Conversation:
     id: UUID
     scope: ConversationScope
     title: str | None
+    kind: ConversationKind
     created_at: datetime
     updated_at: datetime
 

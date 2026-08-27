@@ -7,7 +7,7 @@ from app.dependencies.conversations import (
     ConversationScopeDependency,
     ConversationServiceDependency,
 )
-from app.shared.conversations.domain import ConversationNotFoundError
+from app.shared.conversations.domain import ConversationKind, ConversationNotFoundError
 from app.shared.conversations.schemas import (
     ConversationCreate,
     ConversationRead,
@@ -32,8 +32,20 @@ async def create_conversation(
     scope: ConversationScopeDependency,
     service: ConversationServiceDependency,
 ) -> ConversationRead:
-    conversation = await service.create(scope=scope, title=payload.title)
+    conversation = await service.create(scope=scope, title=payload.title, kind=payload.type)
     return ConversationRead.from_domain(conversation)
+
+
+@router.get("", response_model=list[ConversationRead])
+async def list_conversations(
+    scope: ConversationScopeDependency,
+    service: ConversationServiceDependency,
+    type: ConversationKind,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+) -> list[ConversationRead]:
+    conversations = await service.list(scope=scope, kind=type, offset=offset, limit=limit)
+    return [ConversationRead.from_domain(item) for item in conversations]
 
 
 @router.get("/{conversation_id}", response_model=ConversationRead)

@@ -173,6 +173,7 @@ class SQLAlchemyPostRepository:
             ConversationModel.id == conversation_id,
             ConversationModel.user_id == scope.user_id,
             ConversationModel.project_id == scope.project_id,
+            ConversationModel.kind == "post",
         )
         return (await self._session.execute(statement)).scalar_one_or_none() is not None
 

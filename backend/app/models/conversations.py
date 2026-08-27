@@ -13,12 +13,16 @@ from app.infrastructure.database.base import Base
 
 class ConversationModel(Base):
     __tablename__ = "conversations"
-    __table_args__ = (Index("ix_conversations_scope", "user_id", "project_id", "id"),)
+    __table_args__ = (
+        CheckConstraint("kind IN ('post', 'campaign')", name="valid_conversation_kind"),
+        Index("ix_conversations_scope", "user_id", "project_id", "kind", "id"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     project_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="post")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

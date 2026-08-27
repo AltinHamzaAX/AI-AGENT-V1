@@ -65,14 +65,75 @@ async def _create_conversation(
     headers: dict[str, str],
     *,
     title: str | None = "AtomX Rent",
+    conversation_type: str = "post",
 ) -> dict[str, Any]:
     response = await client.post(
         "/api/conversations",
         headers=headers,
-        json={"title": title},
+        json={"title": title, "type": conversation_type},
     )
     assert response.status_code == 201
     return response.json()
+
+
+@pytest.mark.asyncio
+async def test_conversation_list_is_strictly_filtered_by_type(
+    conversation_client: AsyncClient,
+) -> None:
+    headers = _headers()
+    post = await _create_conversation(
+        conversation_client, headers, title="Post", conversation_type="post"
+    )
+    campaign = await _create_conversation(
+        conversation_client, headers, title="Campaign", conversation_type="campaign"
+    )
+
+    posts = await conversation_client.get(
+        "/api/conversations", headers=headers, params={"type": "post"}
+    )
+    campaigns = await conversation_client.get(
+        "/api/conversations", headers=headers, params={"type": "campaign"}
+    )
+
+    assert [item["id"] for item in posts.json()] == [post["id"]]
+    assert [item["id"] for item in campaigns.json()] == [campaign["id"]]
+    assert all(item["type"] == "post" for item in posts.json())
+
+
+@pytest.mark.asyncio
+async def test_section_apis_create_and_isolate_conversation_histories(
+    conversation_client: AsyncClient,
+) -> None:
+    headers = _headers()
+    post_response = await conversation_client.post(
+        "/api/posts/conversations", headers=headers, json={"title": "Post chat"}
+    )
+    campaign_response = await conversation_client.post(
+        "/api/campaigns/conversations",
+        headers=headers,
+        json={"title": "Campaign chat", "type": "post"},
+    )
+    assert post_response.status_code == 201
+    assert campaign_response.status_code == 201
+    post = post_response.json()
+    campaign = campaign_response.json()
+    assert post["type"] == "post"
+    assert campaign["type"] == "campaign"
+
+    posts = await conversation_client.get("/api/posts/conversations", headers=headers)
+    campaigns = await conversation_client.get("/api/campaigns/conversations", headers=headers)
+    assert [item["id"] for item in posts.json()] == [post["id"]]
+    assert [item["id"] for item in campaigns.json()] == [campaign["id"]]
+
+    wrong_section = await conversation_client.get(
+        f"/api/posts/conversations/{campaign['id']}", headers=headers
+    )
+    wrong_history = await conversation_client.get(
+        f"/api/campaigns/conversations/{post['id']}/messages", headers=headers
+    )
+    assert wrong_section.status_code == 404
+    assert wrong_history.status_code == 404
+    assert all(item["type"] == "campaign" for item in campaigns.json())
 
 
 @pytest.mark.asyncio
