@@ -32,6 +32,7 @@ class SupervisorStage(StrEnum):
     SCENE_PURITY = "scene_purity"
     COMPOSITION = "composition"
     QUALITY_REVIEW = "quality_review"
+    DESIGN_REVIEW = "design_review"
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +296,21 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
                 PostWorkflowSection.REVISION_HISTORY,
             ),
         ),
+        SupervisorStagePolicy(
+            SupervisorStage.DESIGN_REVIEW,
+            dependencies=(SupervisorStage.QUALITY_REVIEW,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.ART_DIRECTION,
+                PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.POST_DRAFT,
+                PostWorkflowSection.QUALITY,
+            ),
+            output_sections=(
+                PostWorkflowSection.DESIGN_QUALITY,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
+        ),
     )
 )
 
@@ -317,6 +333,7 @@ class PostSupervisor:
         state = validate_workflow_state(workflow_state)
         progress = _progress(state)
         quality = state[PostWorkflowSection.QUALITY.value]
+        design_quality = state[PostWorkflowSection.DESIGN_QUALITY.value]
         if quality.get("hard_fail") is True or quality.get("decision") in {
             "BLOCKED",
             "REJECT",
@@ -426,11 +443,24 @@ class PostSupervisor:
                 reason="explicit quality approval is required before completion",
                 state_requirements=(PostWorkflowSection.QUALITY,),
             )
+        design_review_enabled = any(
+            policy.stage is SupervisorStage.DESIGN_REVIEW for policy in self._plan.stages
+        )
+        if design_review_enabled and design_quality.get("decision") != "PASS":
+            return SupervisorDecision(
+                action=SupervisorAction.STOP,
+                next_stage=SupervisorStage.DESIGN_REVIEW,
+                reason="explicit senior design approval is required before completion",
+                state_requirements=(PostWorkflowSection.DESIGN_QUALITY,),
+            )
         return SupervisorDecision(
             action=SupervisorAction.STOP,
             next_stage=None,
             reason="workflow complete and quality approved",
-            state_requirements=(PostWorkflowSection.QUALITY,),
+            state_requirements=(
+                PostWorkflowSection.QUALITY,
+                PostWorkflowSection.DESIGN_QUALITY,
+            ),
             terminal=True,
         )
 

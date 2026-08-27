@@ -30,6 +30,11 @@ class VisionRequest:
     image: bytes
     mime_type: str
     prompt: str
+    #: JSON Schema the answer must satisfy. Adapters that support constrained
+    #: decoding enforce it during generation, which is what makes a structured
+    #: vision gate affordable: the model writes the answer and nothing else.
+    #: Adapters without the capability ignore it and rely on prompt shaping.
+    response_schema: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

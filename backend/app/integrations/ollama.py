@@ -110,31 +110,42 @@ class OllamaVisionProvider(_OllamaAdapter):
     async def analyze(self, request: VisionRequest) -> VisionResponse:
         if not request.image:
             raise ValueError("Vision request image cannot be empty")
-        body = await self._post(
-            "/api/chat",
-            {
-                "model": self._model,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": request.prompt,
-                        "images": [base64.b64encode(request.image).decode("ascii")],
-                    }
-                ],
-                "stream": False,
-                "options": {
-                    # Vision models reason at length about a busy image, and the
-                    # answer is written only after that. Ollama's default window
-                    # cuts the response off mid-thought and returns nothing at
-                    # all, so the window has to cover reasoning plus answer.
-                    "num_ctx": _context_window(len(request.prompt) // 4 + IMAGE_TOKEN_ALLOWANCE),
-                },
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": request.prompt,
+                    "images": [base64.b64encode(request.image).decode("ascii")],
+                }
+            ],
+            "stream": False,
+            # Measured on qwen3-vl: this flag alone does not suppress the private
+            # reasoning trace, which then costs an order of magnitude more tokens
+            # than the answer and exhausts the request timeout. Constrained
+            # decoding below is what actually removes it; the flag stays for the
+            # vision models that do honour it.
+            "think": False,
+            "options": {
+                # The image and the reasoning a free-form answer still triggers
+                # both consume context on top of the prompt itself.
+                "num_ctx": _context_window(len(request.prompt) // 4 + IMAGE_TOKEN_ALLOWANCE),
             },
-        )
+        }
+        if request.response_schema is not None:
+            payload["format"] = request.response_schema
+        body = await self._post("/api/chat", payload)
         message = body.get("message")
         if not isinstance(message, dict) or not isinstance(message.get("content"), str):
             raise ProviderResponseError("ollama returned an invalid vision response")
         content = message["content"].strip()
+        if not content and request.response_schema is not None:
+            # A schema-constrained answer carries none of the markers Ollama's
+            # renderer splits on, so for some vision models the whole answer is
+            # reported as the reasoning trace and `content` arrives empty. The
+            # grammar guarantees what is in there is the requested object.
+            reasoning = message.get("thinking")
+            content = reasoning.strip() if isinstance(reasoning, str) else ""
         if not content:
             # Returning an empty description here would look like a model that
             # saw nothing, which is the opposite of what happened.
