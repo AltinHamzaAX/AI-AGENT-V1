@@ -221,6 +221,8 @@ class WorkflowStateData(BaseModel):
     verification: dict[str, JsonValue]
     quality: dict[str, JsonValue]
     design_quality: dict[str, JsonValue]
+    vision_quality: dict[str, JsonValue]
+    quality_approval: dict[str, JsonValue]
     revision_history: list[JsonValue]
 
 

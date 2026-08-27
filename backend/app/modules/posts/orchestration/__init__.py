@@ -48,6 +48,7 @@ from app.modules.posts.orchestration.supervisor import (
     SupervisorStageResult,
 )
 from app.modules.posts.orchestration.verification import VerificationStageHandler
+from app.modules.posts.orchestration.vision_critic import VisionCriticStageHandler
 
 __all__ = [
     "ArtDirectionStageHandler",
@@ -61,6 +62,7 @@ __all__ = [
     "DesignSpecStageHandler",
     "DesignCriticStageHandler",
     "VerificationStageHandler",
+    "VisionCriticStageHandler",
     "QualityScoringStageHandler",
     "CopywritingStageHandler",
     "ExternalResearchStageHandler",

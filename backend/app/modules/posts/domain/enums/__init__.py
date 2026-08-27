@@ -49,6 +49,7 @@ class PostWorkflowSection(StrEnum):
     VERIFICATION = "verification"
     QUALITY = "quality"
     DESIGN_QUALITY = "design_quality"
+    VISION_QUALITY = "vision_quality"
     QUALITY_APPROVAL = "quality_approval"
     REVISION_HISTORY = "revision_history"
 
