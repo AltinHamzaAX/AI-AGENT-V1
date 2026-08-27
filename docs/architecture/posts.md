@@ -755,6 +755,30 @@ model's misreading of approved copy cannot block a post while genuinely foreign
 text still does. This stage never requests a revision: a hard gate that could be
 negotiated with would be a score with extra steps.
 
+## Quality scoring and approval
+
+After the hard gates, Marketing Critic and Senior Design Critic have completed,
+the Quality Scoring Engine normalizes their evidence and the selected creative
+concept scorecard into twelve dimensions: marketing effectiveness, creative
+concept, composition, visual hierarchy, typography, color, brand fit, product
+fidelity, audience fit, platform fit, differentiation and overall polish. It is
+a deterministic aggregator, not another LLM opinion. Every score records its
+source and evidence, and all reports must identify the same semantic contract
+and exact render.
+
+Thresholds, critical dimensions and dimension weights are configuration. The
+default approval bar is overall `>= 9.0`, each critical dimension `>= 8.5`, each
+other dimension `>= 8.0`, and every hard verification gate `PASS`. A high
+average cannot compensate for a failed dimension or hard gate.
+
+The decision is operational rather than cosmetic: `MUTATE` targets strategy or
+copy, `RECOMPOSE` targets deterministic layout/rendering, `REGENERATE` returns
+to the creative concept/scene path, `REJECT` terminates on a hard-gate failure,
+and `PASS` is the only completion certificate. Non-terminal decisions append a
+targeted revision record containing keep/change scope, reason, recommended
+action and the render checksum, so the Supervisor invalidates only the affected
+stage and its dependants.
+
 ## Observability and execution tracing
 
 The Posts execution boundary records four trace kinds: `agent`, `tool`,
