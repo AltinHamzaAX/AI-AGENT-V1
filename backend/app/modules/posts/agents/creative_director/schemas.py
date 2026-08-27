@@ -7,6 +7,7 @@ from app.modules.posts.agents.audience_research import AudienceIntelligence
 from app.modules.posts.agents.brand_product import BrandAnalysis
 from app.modules.posts.agents.marketing_strategist import MarketingStrategy
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
+from app.modules.posts.tools.creative import CreativeDNA
 from app.modules.posts.tools.research import ExternalResearchResult
 
 
@@ -66,6 +67,14 @@ class CreativeDirectorInput(BaseModel):
     research: ExternalResearchResult
     semantic_contract: dict[str, Any]
     rejected_concept_memory: list[str] = Field(default_factory=list, max_length=20)
+    recent_creative_patterns: list[CreativeDNA] = Field(default_factory=list, max_length=20)
+
+    @field_validator("recent_creative_patterns")
+    @classmethod
+    def recent_patterns_must_be_unique(cls, values: list[CreativeDNA]) -> list[CreativeDNA]:
+        if len({item.fingerprint for item in values}) != len(values):
+            raise ValueError("recent creative patterns must be unique")
+        return values
 
     @field_validator("rejected_concept_memory")
     @classmethod

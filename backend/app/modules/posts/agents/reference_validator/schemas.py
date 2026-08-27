@@ -10,9 +10,10 @@ from app.modules.posts.agents.creative_director import CreativeDirection
 from app.modules.posts.agents.design_spec import DesignSpec
 from app.modules.posts.agents.marketing_strategist import MarketingStrategy
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
+from app.modules.posts.tools.creative import CreativeDNA, RepetitionMatch
 from app.modules.posts.tools.research import ExternalResearchResult
 
-REFERENCE_VALIDATOR_SCHEMA_VERSION = "1.0"
+REFERENCE_VALIDATOR_SCHEMA_VERSION = "1.1"
 REFERENCE_QUALITY_THRESHOLD = 8
 
 
@@ -55,6 +56,7 @@ class ReferenceValidatorInput(BaseModel):
     copy_draft: CopyDraft
     art_direction: ArtDirection
     design_spec: DesignSpec
+    recent_creative_patterns: list[CreativeDNA] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
     def inputs_describe_one_post(self) -> "ReferenceValidatorInput":
@@ -159,6 +161,8 @@ class ReferenceValidationReport(BaseModel):
     references: list[ReferenceAssessment] = Field(default_factory=list, max_length=20)
     issues: list[ReferenceIssue] = Field(default_factory=list, max_length=20)
     generic_patterns: list[GenericPatternSignal] = Field(default_factory=list, max_length=10)
+    creative_dna: CreativeDNA
+    repetition_matches: list[RepetitionMatch] = Field(default_factory=list, max_length=20)
     summary: str = Field(min_length=1, max_length=1_500)
     provider: str = Field(min_length=1, max_length=100)
     model: str = Field(min_length=1, max_length=200)

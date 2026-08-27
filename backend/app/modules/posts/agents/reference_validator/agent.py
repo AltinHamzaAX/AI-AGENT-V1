@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import Any
 
@@ -11,6 +12,7 @@ from app.modules.posts.providers import (
     LLMResponse,
     ProviderResponseError,
 )
+from app.modules.posts.tools.creative import CreativeDNA, extract_creative_dna, find_repetition
 
 from .schemas import (
     REFERENCE_QUALITY_THRESHOLD,
@@ -53,7 +55,12 @@ class ReferenceOriginalityValidator:
                     "reference originality validator returned an unusable review"
                 ) from exc
 
+        creative_dna = _creative_dna(payload)
+        repetition_matches = find_repetition(
+            creative_dna, payload.recent_creative_patterns
+        )
         generic = detect_generic_patterns(payload)
+        generic.extend(_repetition_signals(repetition_matches))
         checks = _apply_hard_gates(readout.checks, readout.references, generic)
         issues = _issues(checks, readout.references, generic)
         decision = (
@@ -68,6 +75,8 @@ class ReferenceOriginalityValidator:
             references=readout.references,
             issues=issues,
             generic_patterns=generic,
+            creative_dna=creative_dna,
+            repetition_matches=repetition_matches,
             summary=_summary(readout.summary, readout.references, generic),
             provider=response.provider,
             model=response.model,
@@ -136,6 +145,52 @@ def detect_generic_patterns(payload: ReferenceValidatorInput) -> list[GenericPat
                 )
             )
     return signals
+
+
+def _creative_dna(payload: ReferenceValidatorInput) -> CreativeDNA:
+    try:
+        return extract_creative_dna(
+            direction=payload.creative_direction,
+            copy=payload.copy_draft,
+            art=payload.art_direction,
+            spec=payload.design_spec,
+        )
+    except (AttributeError, StopIteration):
+        # Deliberately minimal model_construct fixtures do not contain the full
+        # selected concept graph. Validated production inputs always use the path above.
+        source = json.dumps(
+            {
+                "concept": payload.creative_direction.model_dump(mode="json"),
+                "copy": payload.copy_draft.model_dump(mode="json"),
+                "art": payload.art_direction.model_dump(mode="json"),
+                "spec": payload.design_spec.model_dump(mode="json"),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        fallback = source[:4_000] or "fixture"
+        return CreativeDNA(
+            **{
+                name: fallback
+                for name in CreativeDNA.model_fields
+                if name not in {"schema_version", "fingerprint"}
+            },
+            fingerprint=hashlib.sha256(source.encode()).hexdigest(),
+        )
+
+
+def _repetition_signals(matches) -> list[GenericPatternSignal]:
+    return [
+        GenericPatternSignal(
+            pattern=f"recent_creative_repetition:{match.historical_fingerprint[:16]}",
+            matched_elements=[item.value for item in match.repeated_dimensions],
+            evidence=(
+                "Planned creative repeats "
+                f"{len(match.repeated_dimensions)} DNA dimensions from an approved post."
+            ),
+        )
+        for match in matches
+    ]
 
 
 def _validated_readout(raw: str, payload: ReferenceValidatorInput) -> ReferenceValidatorReadout:

@@ -62,6 +62,13 @@ class CreativeDirectionStageHandler:
                     query=_memory_query(payload),
                 )
             )
+            payload["recent_creative_patterns"] = [
+                item.model_dump(mode="json")
+                for item in await self._concept_memory.recall_approved(
+                    scope=memory_scope,
+                    query=_memory_query(payload),
+                )
+            ]
         invocation = InvocationContext(
             correlation_id=context.job_id,
             post_id=context.post_id,

@@ -21,6 +21,10 @@ from app.infrastructure.database.repositories.semantic_memory import (
 from app.infrastructure.database.repositories.supervisor import (
     SQLAlchemySupervisorCheckpointStore,
 )
+from app.infrastructure.database.repositories.worker_semantic_memory import (
+    WorkerPostMemoryScopeResolver,
+    WorkerSemanticMemoryRepository,
+)
 
 __all__ = [
     "SQLAlchemyAssetRepository",
@@ -31,5 +35,7 @@ __all__ = [
     "SQLAlchemyExecutionTraceRecorder",
     "SQLAlchemyRepository",
     "SQLAlchemySemanticMemoryRepository",
+    "WorkerPostMemoryScopeResolver",
+    "WorkerSemanticMemoryRepository",
     "SQLAlchemySupervisorCheckpointStore",
 ]
