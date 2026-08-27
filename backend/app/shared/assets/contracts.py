@@ -52,6 +52,13 @@ class AssetRepository(Protocol):
         scope: ConversationScope,
     ) -> Sequence[Asset] | None: ...
 
+    async def list_for_conversation(
+        self,
+        *,
+        conversation_id: UUID,
+        scope: ConversationScope,
+    ) -> Sequence[Asset]: ...
+
 
 class AssetStorage(Protocol):
     async def is_available(self) -> bool: ...

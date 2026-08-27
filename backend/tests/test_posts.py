@@ -105,6 +105,24 @@ async def _conversation(client: AsyncClient, headers: dict[str, str]) -> str:
     return str(response.json()["id"])
 
 
+@pytest.mark.asyncio
+async def test_campaign_conversation_cannot_be_used_as_a_post_source(
+    post_client: AsyncClient,
+) -> None:
+    headers = _headers()
+    campaign = await post_client.post(
+        "/api/campaigns/conversations", headers=headers, json={"title": "Campaign"}
+    )
+    assert campaign.status_code == 201
+
+    response = await post_client.post(
+        "/api/posts",
+        headers=headers,
+        json={"conversation_id": campaign.json()["id"]},
+    )
+    assert response.status_code == 404
+
+
 async def _post(
     client: AsyncClient,
     headers: dict[str, str],

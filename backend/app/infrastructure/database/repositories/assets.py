@@ -138,3 +138,22 @@ class SQLAlchemyAssetRepository:
         )
         models = (await self._session.execute(statement)).scalars().all()
         return tuple(_asset(model) for model in models)
+
+    async def list_for_conversation(
+        self,
+        *,
+        conversation_id: UUID,
+        scope: ConversationScope,
+    ) -> Sequence[Asset]:
+        statement = (
+            select(AssetModel)
+            .join(MessageModel, MessageModel.id == AssetModel.message_id)
+            .where(
+                MessageModel.conversation_id == conversation_id,
+                AssetModel.user_id == scope.user_id,
+                AssetModel.project_id == scope.project_id,
+            )
+            .order_by(MessageModel.sequence, AssetModel.created_at, AssetModel.id)
+        )
+        models = (await self._session.execute(statement)).scalars().all()
+        return tuple(_asset(model) for model in models)

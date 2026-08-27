@@ -5,8 +5,10 @@ from uuid import uuid4
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
+from app.core.config import Settings
 from app.modules.posts.agents import AgentRuntime
 from app.modules.posts.domain.contracts import (
+    SPECIALIST_TIMEOUT_SECONDS,
     AgentDefinition,
     InvocationContext,
     RetryPolicy,
@@ -373,3 +375,8 @@ async def test_invalid_tool_output_fails_without_leaking_handler_error() -> None
         await runtime.run("copywriter", {"text": "safe"})
     assert error.value.component == "tool"
     assert "unexpected" not in str(error.value)
+
+
+def test_no_specialist_gives_up_before_the_provider_is_allowed_to() -> None:
+    """An agent that times out first turns a slow model into a broken stage."""
+    assert SPECIALIST_TIMEOUT_SECONDS >= Settings().provider_timeout_seconds

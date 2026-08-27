@@ -3,6 +3,7 @@ from uuid import UUID
 
 from app.shared.conversations.domain import (
     Conversation,
+    ConversationKind,
     ConversationScope,
     Message,
     MessagePage,
@@ -16,6 +17,7 @@ class ConversationRepository(Protocol):
         *,
         scope: ConversationScope,
         title: str | None,
+        kind: ConversationKind = ConversationKind.POST,
     ) -> Conversation: ...
 
     async def get(
@@ -24,6 +26,15 @@ class ConversationRepository(Protocol):
         conversation_id: UUID,
         scope: ConversationScope,
     ) -> Conversation | None: ...
+
+    async def list(
+        self,
+        *,
+        scope: ConversationScope,
+        kind: ConversationKind,
+        offset: int,
+        limit: int,
+    ) -> tuple[Conversation, ...]: ...
 
     async def append_message(
         self,

@@ -40,7 +40,7 @@ class ClarificationPlan(BaseModel):
 
     requires_user_input: bool
     items: list[MissingInformationItem]
-    questions: list[ClarificationQuestion] = Field(max_length=3)
+    questions: list[ClarificationQuestion] = Field(max_length=4)
 
     @model_validator(mode="after")
     def validate_plan(self) -> "ClarificationPlan":
@@ -107,7 +107,21 @@ class ClarificationEngine:
                 "ask_user",
                 "A post cannot be planned without knowing what it promotes.",
             )
-        if field in {UnderstandingField.AUDIENCE, UnderstandingField.MARKET}:
+        if field is UnderstandingField.AUDIENCE:
+            return _item(
+                field,
+                MissingInformationClass.CRITICAL,
+                "ask_user",
+                "Research deepens a declared audience; it cannot invent one for the client.",
+            )
+        if field is UnderstandingField.CTA_INTENT:
+            return _item(
+                field,
+                MissingInformationClass.CRITICAL,
+                "ask_user",
+                "The call-to-action strategy is grounded in the action the client asked for.",
+            )
+        if field is UnderstandingField.MARKET:
             return _item(
                 field,
                 MissingInformationClass.RESEARCHABLE,
@@ -156,6 +170,18 @@ def _question(field: UnderstandingField, *, language: str | None) -> str:
             "Cilin produkt, shërbim ose biznes duhet të promovojë postimi?"
             if albanian
             else "Which product, service, or business should the post promote?"
+        )
+    if field is UnderstandingField.AUDIENCE:
+        return (
+            "Kujt i drejtohet ky post?"
+            if albanian
+            else "Who is this post for?"
+        )
+    if field is UnderstandingField.CTA_INTENT:
+        return (
+            "Çfarë dëshironi të bëjë audienca pasi ta shohë postin?"
+            if albanian
+            else "What should the audience do after they see the post?"
         )
     raise ValueError(f"No clarification question exists for field '{field.value}'")
 

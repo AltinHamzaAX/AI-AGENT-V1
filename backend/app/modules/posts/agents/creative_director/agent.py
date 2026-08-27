@@ -5,7 +5,11 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from app.modules.posts.agents.framework import AgentExecutionContext, AgentRuntime
-from app.modules.posts.domain.contracts import AgentDefinition, RetryPolicy
+from app.modules.posts.domain.contracts import (
+    SPECIALIST_TIMEOUT_SECONDS,
+    AgentDefinition,
+    RetryPolicy,
+)
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
 from app.modules.posts.providers import (
     LLMMessage,
@@ -45,7 +49,7 @@ CREATIVE_DIRECTOR_DEFINITION = AgentDefinition(
     output_schema=CreativeDirection,
     allowed_tools=frozenset(),
     # The framework caps each agent at 300s; provider I/O uses the same ceiling.
-    timeout_seconds=300,
+    timeout_seconds=SPECIALIST_TIMEOUT_SECONDS,
     retry_policy=RetryPolicy(max_attempts=2, retry_on_timeout=True, retry_on_error=True),
 )
 

@@ -54,12 +54,11 @@ class ClientUnderstandingStageHandler:
         )
         if not isinstance(output, ClientUnderstandingBrief):
             raise TypeError("client understanding returned an invalid output type")
-        brief = output.model_dump(mode="json")
-        brief["clarification"] = ClarificationEngine().evaluate(output).model_dump(mode="json")
+        understood = output.model_copy(
+            update={"clarification": ClarificationEngine().evaluate(output)}
+        )
         return SupervisorStageResult(
-            outputs={
-                PostWorkflowSection.BRIEF: brief,
-            }
+            outputs={PostWorkflowSection.BRIEF: understood.model_dump(mode="json")}
         )
 
 

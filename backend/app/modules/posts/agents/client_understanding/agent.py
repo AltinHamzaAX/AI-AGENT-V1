@@ -6,7 +6,11 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from app.modules.posts.agents.framework import AgentExecutionContext, AgentRuntime
-from app.modules.posts.domain.contracts import AgentDefinition, RetryPolicy
+from app.modules.posts.domain.contracts import (
+    SPECIALIST_TIMEOUT_SECONDS,
+    AgentDefinition,
+    RetryPolicy,
+)
 from app.modules.posts.providers import (
     LLMMessage,
     LLMProvider,
@@ -32,7 +36,7 @@ CLIENT_UNDERSTANDING_DEFINITION = AgentDefinition(
     input_schema=ClientUnderstandingInput,
     output_schema=ClientUnderstandingBrief,
     allowed_tools=frozenset(),
-    timeout_seconds=120,
+    timeout_seconds=SPECIALIST_TIMEOUT_SECONDS,
     retry_policy=RetryPolicy(
         max_attempts=2,
         retry_on_timeout=True,

@@ -5,7 +5,12 @@ from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.dependencies.conversations import ConversationServiceDependency
 from app.dependencies.providers import get_provider_bundle
+from app.infrastructure.database.repositories.assets import SQLAlchemyAssetRepository
+from app.infrastructure.database.repositories.post_conversation_contexts import (
+    SQLAlchemyPostConversationContextRepository,
+)
 from app.infrastructure.database.repositories.post_memory_scope import (
     SQLAlchemyPostMemoryScopeResolver,
 )
@@ -14,9 +19,11 @@ from app.infrastructure.database.repositories.semantic_memory import (
     SQLAlchemySemanticMemoryRepository,
 )
 from app.infrastructure.database.session import get_db_transaction
+from app.modules.posts.chat import ConversationResponder, ConversationRouter
 from app.modules.posts.domain.entities import PostScope
 from app.modules.posts.providers import ProviderBundle
 from app.modules.posts.services import ConceptMemoryService, PostsService, SemanticMemoryService
+from app.modules.posts.services.chat import PostChatService
 
 
 def get_post_scope(
@@ -34,6 +41,25 @@ def get_posts_service(
         SQLAlchemyPostRepository(session),
         generation_job_max_attempts=settings.generation_job_max_attempts,
         generation_job_timeout_seconds=settings.generation_job_timeout_seconds,
+    )
+
+
+def get_post_chat_service(
+    session: Annotated[AsyncSession, Depends(get_db_transaction)],
+    conversations: ConversationServiceDependency,
+    posts: Annotated[PostsService, Depends(get_posts_service)],
+    providers: Annotated[ProviderBundle, Depends(get_provider_bundle)],
+) -> PostChatService:
+    return PostChatService(
+        conversations=conversations,
+        posts=posts,
+        contexts=SQLAlchemyPostConversationContextRepository(session),
+        assets=SQLAlchemyAssetRepository(session),
+        # Classifying a message reads what is already there; writing the reply
+        # has to be thought up, so it follows the creative model when one is
+        # configured and shares the default model when it is not.
+        router=ConversationRouter(providers.llm),
+        responder=ConversationResponder(providers.creative_llm),
     )
 
 
@@ -61,6 +87,7 @@ def get_post_memory_scope_resolver(
 
 PostScopeDependency = Annotated[PostScope, Depends(get_post_scope)]
 PostsServiceDependency = Annotated[PostsService, Depends(get_posts_service)]
+PostChatServiceDependency = Annotated[PostChatService, Depends(get_post_chat_service)]
 SemanticMemoryServiceDependency = Annotated[
     SemanticMemoryService,
     Depends(get_semantic_memory_service),

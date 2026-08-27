@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.conversations import ConversationModel, MessageModel
 from app.shared.conversations.domain import (
     Conversation,
+    ConversationKind,
     ConversationScope,
     Message,
     MessagePage,
@@ -20,6 +21,7 @@ def _conversation(model: ConversationModel) -> Conversation:
         id=model.id,
         scope=ConversationScope(user_id=model.user_id, project_id=model.project_id),
         title=model.title,
+        kind=ConversationKind(model.kind),
         created_at=model.created_at,
         updated_at=model.updated_at,
     )
@@ -46,11 +48,13 @@ class SQLAlchemyConversationRepository:
         *,
         scope: ConversationScope,
         title: str | None,
+        kind: ConversationKind = ConversationKind.POST,
     ) -> Conversation:
         model = ConversationModel(
             user_id=scope.user_id,
             project_id=scope.project_id,
             title=title,
+            kind=kind.value,
         )
         self._session.add(model)
         await self._session.flush()
@@ -68,6 +72,28 @@ class SQLAlchemyConversationRepository:
             scope=scope,
         )
         return _conversation(model) if model else None
+
+    async def list(
+        self,
+        *,
+        scope: ConversationScope,
+        kind: ConversationKind,
+        offset: int,
+        limit: int,
+    ) -> tuple[Conversation, ...]:
+        statement = (
+            select(ConversationModel)
+            .where(
+                ConversationModel.user_id == scope.user_id,
+                ConversationModel.project_id == scope.project_id,
+                ConversationModel.kind == kind.value,
+            )
+            .order_by(ConversationModel.updated_at.desc(), ConversationModel.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        models = (await self._session.execute(statement)).scalars().all()
+        return tuple(_conversation(model) for model in models)
 
     async def append_message(
         self,

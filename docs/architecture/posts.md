@@ -824,6 +824,111 @@ marks only the latest pending instruction completed when its exact target stage
 finishes, invalidates that stage and its dependants, and sends the rebuilt draft
 through verification and scoring again.
 
+## Conversational Posts UI and section isolation
+
+The web application exposes two explicit workspaces: `/posts` and
+`/campaigns`, each with a conversation detail route ending in
+`/:conversationId`. A conversation persists a required `post` or `campaign`
+kind. Section-specific conversation APIs create the route's kind on the server,
+filter history by that kind and return `404` when an identifier is opened from
+the other section. The generic conversation boundary also requires an explicit
+type when listing. Posts additionally reject campaign conversations as Post
+sources, so route state cannot bypass the domain boundary.
+
+The Posts workspace supports messages, multiple image previews and uploads,
+generation, backend job polling, Supervisor-derived progress, terminal failure
+reporting and completed artifact metadata. Later revision requests stay in the
+same conversation and create another generation attempt for the same Post
+during the browser session. The UI reports completion only after the persisted
+generation job is complete; it never substitutes animated progress for backend
+state. Campaign conversations use their own API prefix and isolated client
+state, while generation remains deliberately unavailable until the Campaign
+Engine supplies its public boundary.
+
+## Conversational assistant and intent routing
+
+Every client message runs one pipeline: classify the intent, fold the newly
+stated facts into the conversation's memory, decide the single action the turn
+may perform, perform it, and answer. A message is never an implicit order to
+generate.
+
+The classifier is a structured provider call that returns one of
+`GENERAL_CONVERSATION`, `MARKETING_QUESTION`, `MISSING_INFORMATION`,
+`GENERATE_POST`, `REVISE_POST` or `CLARIFICATION`, together with the facts the
+message carries. It proposes; `ChatIntentRouter` decides. Unambiguous wording
+promotes a turn to generation or revision regardless of the classification, a
+question never generates, revision requires an existing generation, and
+generation requires the facts `ClarificationEngine` marks critical - otherwise
+the turn asks the missing question instead. A second explicit order proceeds on
+a goal inferred from the promoted subject, recorded as inferred so no later
+stage reads it as a client statement.
+
+Model output is narrowed before it is stored. Named entities (business, brand,
+product, location, platform, offer) survive only when they appear in the
+client's own words; interpretive readings (goal, audience, market, CTA intent,
+style, constraints) are kept as written. A platform outside the known set is
+dropped rather than stored, a stated business outcome is recovered
+deterministically from the message when the model omits it, and the client's
+language is decided from their own text because it selects the wording of every
+clarification question.
+
+`post_conversation_contexts` persists one accumulated context per conversation:
+the understood facts, uploaded assets, previous requests, generated attempts and
+revision instructions. The client is never asked twice for the same fact. When a
+turn starts the workflow, that context seeds the generation's
+`conversation_context` section - conversation history, latest message,
+attachments and verified project context - so the Supervisor's first stage
+receives the brief the chat built. A revision starts a new attempt on the same
+Post and records which generation it revises.
+
+The whole turn runs in one transaction: a failure after a generation was
+requested leaves neither the message nor the queued work behind. Classification
+uses the extraction model and the reply uses the creative model, so a deployment
+can pay for conversational quality without paying for it on every classification.
+
+## Worker composition and pipeline coverage
+
+`app/workers/pipeline.py` is the one place that assembles the durable pipeline:
+the SQLAlchemy checkpoint store, every specialist stage handler this deployment
+can run, and the execution trace recorder, into the `PostSupervisorExecutor`
+that the worker process drives. The worker entry point claims one job at a
+time, honours a stop signal between jobs so a running generation keeps its
+lease, and reports its identity on startup.
+
+Composition is the only stage whose dependencies are tenant-scoped. The asset
+library is tenant-gated and a worker serves every tenant, so the composition
+resolver reads the owning scope from the generation being composed instead of
+being fixed when the pipeline is assembled.
+
+A stage absent from the registry is never silently skipped. The Supervisor
+stops with `stage_handler:<stage>` as the missing input and the job ends
+non-retryable, which is how an unfinished pipeline reports itself rather than
+producing a partial post. Every planned stage is registered, and a test asserts
+it, so a stage added to the plan without a handler fails the suite instead of
+surfacing later as a stalled generation.
+
+## What the client must state
+
+The semantic contract requires a non-null audience and CTA intent, and two
+stages enforce that: audience research grounds every segment in
+`semantic_contract.audience`, and marketing strategy grounds its call to action
+in `semantic_contract.cta_intent` as evidence distinct from the goal. Neither
+can be researched into existence - research deepens a declared audience rather
+than inventing one - so the clarification policy classifies both as critical
+alongside the goal and the promoted subject. Those four facts are what the
+assistant asks for before a generation may start.
+
+Platform and language stay inferable. They shape delivery rather than any claim
+about the client's business, so the semantic contract stage falls back to a
+declared working value when the client never named one. Everything else in the
+contract is optional and passes through exactly as the brief recorded it.
+
+The stage itself is deterministic and calls no model: it maps the brief onto the
+contract, derives the promoted subject in the clarification policy's own order,
+carries stated facts (offer, location, product) as required facts, and marks
+identity assets as required. A brief that reaches it without a fact no stage can
+derive stops the job non-retryably and names the fact.
+
 ## Observability and execution tracing
 
 The Posts execution boundary records four trace kinds: `agent`, `tool`,
