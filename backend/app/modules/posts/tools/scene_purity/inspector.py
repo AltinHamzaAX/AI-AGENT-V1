@@ -101,9 +101,7 @@ class ScenePurityInspector:
     ) -> VisionResponse:
         prompt = _prompt()
         if previous_output is not None:
-            rejected = json.dumps(
-                previous_output, ensure_ascii=False, sort_keys=True, default=str
-            )
+            rejected = json.dumps(previous_output, ensure_ascii=False, sort_keys=True, default=str)
             prompt += (
                 "\n\nCORRECTION PASS. Your previous answer was rejected. Return the complete "
                 "corrected JSON object and nothing else."
@@ -120,22 +118,43 @@ class ScenePurityInspector:
 
 
 def _prompt() -> str:
-    schema = json.dumps(SceneReadout.model_json_schema(), sort_keys=True)
-    kinds = " ".join(f"- {kind.value}: {brief}." for kind, brief in _KIND_BRIEF.items())
+    # A literal shape rather than a JSON Schema dump: schemas are large enough to
+    # crowd out the answer on the small vision models this runs against, and an
+    # example of the exact keys reproduces far more reliably than a spec of them.
+    kinds = "\n".join(f"  {kind.value}: {brief}" for kind, brief in _KIND_BRIEF.items())
+    example = json.dumps(
+        {
+            "observations": [
+                {
+                    "kind": kind.value,
+                    "confidence": 0.0,
+                    "evidence": "No evidence of this contamination is visible.",
+                }
+                for kind in ContaminationKind
+            ],
+            "visible_text": [],
+            "visible_brands": [],
+            "depicted_products": [],
+            "description": "A clean photographic environment with no promotional elements.",
+        },
+        ensure_ascii=False,
+    )
     return (
-        "You are inspecting a generated background plate for a marketing post. The plate is "
-        "only scenery: the product, logo, headline, offer and call to action are composited "
-        "separately from approved originals, so none of them may appear in this image. "
-        "Report what you actually observe. Do not decide whether the plate is acceptable and "
-        "do not describe intent. For every contamination kind give a confidence between 0 and "
-        "1 that it is PRESENT in the image, plus one short sentence of evidence naming what "
-        f"you saw or why it is absent. Kinds: {kinds} "
-        "Transcribe every legible string into visible_text exactly as written, even single "
-        "words on signage or packaging; use an empty list only when the image contains no "
-        "readable characters at all. List every brand or trademark you recognise in "
-        "visible_brands, and every manufactured product depicted as a subject in "
-        "depicted_products, naming each in plain words. Return exactly one JSON object, no "
-        f"markdown fence and no commentary. Schema: {schema}"
+        "Inspect this generated background plate for a marketing post. The plate is only "
+        "scenery: the product, logo, headline, offer and call to action are added later from "
+        "approved originals, so none of them belong in this image.\n\n"
+        "Report only what you actually see. Do not judge whether the plate is acceptable.\n\n"
+        f"Rate each of these nine kinds from 0 to 1 for how sure you are it is PRESENT:\n{kinds}"
+        "\n\nAlso:\n"
+        "  visible_text: every readable string, copied exactly, including single words on "
+        "signs, packaging or screens. Empty only if the image has no readable characters.\n"
+        "  visible_brands: every brand or trademark you recognise.\n"
+        "  depicted_products: every manufactured product shown as a subject.\n"
+        "  description: one sentence describing the scene.\n\n"
+        "Answer with one JSON object and nothing else: no markdown fence, no commentary. "
+        "Give an observations entry for all nine kinds above, spelled exactly as listed, each "
+        "with one short evidence sentence. Shape:\n"
+        f"{example}"
     )
 
 

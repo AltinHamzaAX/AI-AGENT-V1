@@ -275,6 +275,21 @@ async def test_an_unusable_readout_is_repaired_before_it_is_trusted() -> None:
 
 
 @pytest.mark.asyncio
+async def test_prompt_demonstrates_every_required_observation() -> None:
+    payload = await _payload()
+    vision = _StubVision(_readout())
+
+    await ScenePurityInspector(vision).inspect(payload)
+
+    prompt = vision.requests[0].prompt
+    for kind in ContaminationKind:
+        assert prompt.count(f'"kind": "{kind.value}"') == 1
+    assert '"visible_text": []' in prompt
+    assert '"visible_brands": []' in prompt
+    assert '"depicted_products": []' in prompt
+
+
+@pytest.mark.asyncio
 async def test_a_readout_that_cannot_be_repaired_fails_closed() -> None:
     payload = await _payload()
     vision = _StubVision({"description": "nope"}, {"still": "wrong"})
@@ -380,9 +395,7 @@ async def test_stage_certifies_a_clean_plate_without_touching_revision_history()
 
     result = await handler.execute(_context(state))
 
-    report = ScenePurityReport.model_validate(
-        result.outputs[PostWorkflowSection.SCENE_PURITY]
-    )
+    report = ScenePurityReport.model_validate(result.outputs[PostWorkflowSection.SCENE_PURITY])
     assert report.verdict is ScenePurityVerdict.PASS
     assert report.certifies(hashlib.sha256(data).hexdigest()) is True
     assert result.outputs[PostWorkflowSection.REVISION_HISTORY] == []
@@ -396,9 +409,7 @@ async def test_contaminated_plate_sends_production_back_for_a_new_scene() -> Non
 
     result = await handler.execute(_context(state))
 
-    report = ScenePurityReport.model_validate(
-        result.outputs[PostWorkflowSection.SCENE_PURITY]
-    )
+    report = ScenePurityReport.model_validate(result.outputs[PostWorkflowSection.SCENE_PURITY])
     assert report.verdict is ScenePurityVerdict.REGENERATE_SCENE
     history = result.outputs[PostWorkflowSection.REVISION_HISTORY]
     assert len(history) == 1
@@ -426,9 +437,7 @@ async def test_supervisor_routes_the_request_back_to_production() -> None:
             PostWorkflowSection.SEMANTIC_CONTRACT.value
         ],
         PostWorkflowSection.DESIGN_SPEC.value: state[PostWorkflowSection.DESIGN_SPEC.value],
-        PostWorkflowSection.GENERATION_PLAN.value: state[
-            PostWorkflowSection.GENERATION_PLAN.value
-        ],
+        PostWorkflowSection.GENERATION_PLAN.value: state[PostWorkflowSection.GENERATION_PLAN.value],
         PostWorkflowSection.ART_DIRECTION.value: state[PostWorkflowSection.ART_DIRECTION.value],
         PostWorkflowSection.CREATIVE_CONCEPT.value: state[
             PostWorkflowSection.CREATIVE_CONCEPT.value
@@ -481,9 +490,10 @@ async def test_a_retried_inspection_does_not_stack_duplicate_requests() -> None:
     ]
     second = await handler.execute(_context(state))
 
-    assert second.outputs[PostWorkflowSection.REVISION_HISTORY] == first.outputs[
-        PostWorkflowSection.REVISION_HISTORY
-    ]
+    assert (
+        second.outputs[PostWorkflowSection.REVISION_HISTORY]
+        == first.outputs[PostWorkflowSection.REVISION_HISTORY]
+    )
 
 
 @pytest.mark.asyncio
@@ -493,9 +503,7 @@ async def test_a_scene_that_was_never_generated_is_not_inspected() -> None:
 
     result = await ScenePurityStageHandler(_providers(vision, storage)).execute(_context(state))
 
-    report = ScenePurityReport.model_validate(
-        result.outputs[PostWorkflowSection.SCENE_PURITY]
-    )
+    report = ScenePurityReport.model_validate(result.outputs[PostWorkflowSection.SCENE_PURITY])
     assert report.inspected is False
     assert report.verdict is ScenePurityVerdict.PASS
     assert report.scene_checksum is None

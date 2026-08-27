@@ -32,6 +32,7 @@ from app.modules.posts.providers import (
     LLMRequest,
     ProviderConfigurationError,
     ProviderError,
+    ProviderResponseError,
     ResearchRequest,
     VisionRequest,
 )
@@ -201,7 +202,27 @@ async def test_ollama_adapters_use_provider_neutral_contracts() -> None:
     assert llm_response.input_tokens == 4 and llm_response.output_tokens == 2
     assert vision_response.data == {"objects": ["product"]}
     assert requests[1]["messages"][0]["images"] == [base64.b64encode(b"binary").decode("ascii")]
+    assert requests[1]["options"]["num_ctx"] == 16_384
     assert embedding_response.vectors == ((0.1, 0.2), (0.3, 0.4))
+
+
+@pytest.mark.asyncio
+async def test_ollama_vision_rejects_an_empty_answer_instead_of_certifying_it() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "qwen-vl",
+                "message": {"role": "assistant", "content": "   "},
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        vision = OllamaVisionProvider(base_url="http://ollama.test", model="qwen-vl", client=client)
+        with pytest.raises(ProviderResponseError, match="empty vision answer"):
+            await vision.analyze(
+                VisionRequest(image=b"binary", mime_type="image/png", prompt="analyze")
+            )
 
 
 @pytest.mark.asyncio

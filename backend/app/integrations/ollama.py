@@ -45,20 +45,24 @@ DEFAULT_CONTEXT_TOKENS = 4_096
 MAX_CONTEXT_TOKENS = 32_768
 #: Room for the model's own answer on top of the prompt.
 RESPONSE_TOKEN_ALLOWANCE = 2_048
+#: A full-canvas plate costs a vision model both the image itself and a long
+#: run of reasoning about it that the character estimate cannot see. Measured
+#: at 10-14k thinking tokens for a busy 1080px plate on qwen3-vl, so anything
+#: smaller returns done_reason=length with an empty answer.
+IMAGE_TOKEN_ALLOWANCE = 12_288
+
+
+def _context_window(estimated_prompt_tokens: int) -> int:
+    # Four characters per token is rough, but it only has to be safe: the window
+    # is rounded up to a power of two and capped.
+    needed = estimated_prompt_tokens + RESPONSE_TOKEN_ALLOWANCE
+    window = DEFAULT_CONTEXT_TOKENS
+    while window < needed and window < MAX_CONTEXT_TOKENS:
+        window *= 2
+    return min(window, MAX_CONTEXT_TOKENS)
 
 
 class OllamaLLMProvider(_OllamaAdapter):
-    @staticmethod
-    def _context_window(messages: list[dict[str, str]]) -> int:
-        # Four characters per token is rough, but it only has to be safe: the
-        # window is rounded up to a power of two and capped.
-        estimated = sum(len(message["content"]) for message in messages) // 4
-        needed = estimated + RESPONSE_TOKEN_ALLOWANCE
-        window = DEFAULT_CONTEXT_TOKENS
-        while window < needed and window < MAX_CONTEXT_TOKENS:
-            window *= 2
-        return min(window, MAX_CONTEXT_TOKENS)
-
     async def complete(self, request: LLMRequest) -> LLMResponse:
         if not request.messages:
             raise ValueError("LLM request requires at least one message")
@@ -82,7 +86,9 @@ class OllamaLLMProvider(_OllamaAdapter):
                 # longer, so a large prompt reaches the model with its tail cut
                 # off and comes back as malformed output. Size the window to the
                 # request instead of hoping the default fits.
-                "num_ctx": self._context_window(messages),
+                "num_ctx": _context_window(
+                    sum(len(message["content"]) for message in messages) // 4
+                ),
             },
         }
         if request.response_format == "json":
@@ -116,12 +122,23 @@ class OllamaVisionProvider(_OllamaAdapter):
                     }
                 ],
                 "stream": False,
+                "options": {
+                    # Vision models reason at length about a busy image, and the
+                    # answer is written only after that. Ollama's default window
+                    # cuts the response off mid-thought and returns nothing at
+                    # all, so the window has to cover reasoning plus answer.
+                    "num_ctx": _context_window(len(request.prompt) // 4 + IMAGE_TOKEN_ALLOWANCE),
+                },
             },
         )
         message = body.get("message")
         if not isinstance(message, dict) or not isinstance(message.get("content"), str):
             raise ProviderResponseError("ollama returned an invalid vision response")
-        content = message["content"]
+        content = message["content"].strip()
+        if not content:
+            # Returning an empty description here would look like a model that
+            # saw nothing, which is the opposite of what happened.
+            raise ProviderResponseError("ollama returned an empty vision answer")
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError:
