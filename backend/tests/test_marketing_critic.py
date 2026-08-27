@@ -226,6 +226,10 @@ async def test_stage_writes_quality_and_requests_smallest_revision() -> None:
     assert history[-1]["target_stage"] == SupervisorStage.COPYWRITING.value
     assert history[-1]["requested_by"] == SupervisorStage.QUALITY_REVIEW.value
     assert history[-1]["change"] == [PostWorkflowSection.COPY.value]
+    assert history[-1]["route"] == "copy"
+    assert history[-1]["responsible_component"] == "copywriter"
+    assert history[-1]["why"] and history[-1]["action"] and history[-1]["keep"]
+    assert history[-1]["iteration"] == 1
     routed = {**state, PostWorkflowSection.QUALITY.value: quality}
     routed[PostWorkflowSection.REVISION_HISTORY.value] = history
     decision = PostSupervisor().decide(routed)

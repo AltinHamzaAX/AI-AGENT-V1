@@ -18,6 +18,7 @@ from app.modules.posts.tools.generation import (
     SceneArtifact,
     SceneGenerationStatus,
 )
+from app.modules.posts.tools.revision import RevisionDirector, RevisionFinding, RevisionRoute
 from app.modules.posts.tools.scene_purity import (
     ScenePurityInput,
     ScenePurityInspector,
@@ -161,19 +162,23 @@ def _regeneration_requests(history: list[Any]) -> int:
 
 
 def _request_regeneration(history: list[Any], report: ScenePurityReport) -> list[Any]:
-    entry = {
-        "status": "pending",
-        "target_stage": SupervisorStage.PRODUCTION.value,
-        "requested_by": SupervisorStage.SCENE_PURITY.value,
-        "reason": report.reason,
-        "keep": [section.value for section in PRESERVED_ON_REGENERATION],
-        "change": [PostWorkflowSection.GENERATION_ARTIFACTS.value],
-        "contaminations": [finding.kind.value for finding in report.findings],
-    }
-    if history and history[-1] == entry:
-        # A retried inspection of the same plate must not stack duplicate requests.
-        return history
-    return [*history, entry]
+    findings = [
+        RevisionFinding(
+            route=RevisionRoute.SCENE,
+            why=finding.detail,
+            action="Regenerate only the scene plate without the reported contamination.",
+            source=f"scene_purity:{finding.kind.value}",
+        )
+        for finding in report.findings
+    ]
+    director = RevisionDirector()
+    instruction = director.plan(
+        findings,
+        requested_by=SupervisorStage.SCENE_PURITY,
+        history=history,
+        render_reference=report.scene_checksum,
+    )
+    return director.append(history, instruction)
 
 
 __all__ = ["PRESERVED_ON_REGENERATION", "ScenePurityStageHandler"]

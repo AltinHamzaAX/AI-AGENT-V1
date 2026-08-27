@@ -13,6 +13,7 @@ from app.modules.posts.tools.quality import (
     QualityScoringInput,
     QualityThresholds,
 )
+from app.modules.posts.tools.revision import RevisionDirector, RevisionFinding, RevisionRoute
 
 
 class QualityScoringStageHandler:
@@ -60,29 +61,51 @@ def _array(state: dict[str, Any], section: PostWorkflowSection) -> list[Any]:
 
 
 def _request_revision(history: list[Any], report) -> list[Any]:
-    target = {
-        ApprovalDecision.MUTATE: SupervisorStage.COPYWRITING,
-        ApprovalDecision.RECOMPOSE: SupervisorStage.DESIGN_SPEC,
-        ApprovalDecision.REGENERATE: SupervisorStage.CREATIVE_CONCEPT,
-    }[report.decision]
-    entry = {
-        "status": "pending",
-        "target_stage": target.value,
-        "requested_by": SupervisorStage.QUALITY_SCORING.value,
-        "reason": report.reason,
-        "recommended_action": report.recommended_action,
-        "keep": [
-            PostWorkflowSection.SEMANTIC_CONTRACT.value,
-            PostWorkflowSection.BRAND.value,
-            PostWorkflowSection.PRODUCT.value,
-            PostWorkflowSection.ASSETS.value,
-        ],
-        "change": [item.value for item in report.failed_dimensions],
-        "render_checksum": report.render_checksum,
-    }
-    if history and history[-1] == entry:
-        return history
-    return [*history, entry]
+    findings = [
+        RevisionFinding(
+            route=_quality_route(dimension),
+            why=f"{dimension.value} scored below its configured threshold.",
+            action=report.recommended_action or "Correct only this failed dimension.",
+            source=f"quality_scoring:{dimension.value}",
+        )
+        for dimension in report.failed_dimensions
+    ]
+    if not findings:
+        findings = [
+            RevisionFinding(
+                route=RevisionRoute.STRATEGY,
+                why=report.reason,
+                action=report.recommended_action or "Improve the overall quality score.",
+                source="quality_scoring:overall",
+            )
+        ]
+    director = RevisionDirector()
+    instruction = director.plan(
+        findings,
+        requested_by=SupervisorStage.QUALITY_SCORING,
+        history=history,
+        render_reference=report.render_checksum,
+    )
+    return director.append(history, instruction)
+
+
+def _quality_route(dimension) -> RevisionRoute:
+    from app.modules.posts.tools.quality import QualityDimension
+
+    return {
+        QualityDimension.MARKETING_EFFECTIVENESS: RevisionRoute.STRATEGY,
+        QualityDimension.CREATIVE_CONCEPT: RevisionRoute.CONCEPT,
+        QualityDimension.COMPOSITION: RevisionRoute.LAYOUT,
+        QualityDimension.VISUAL_HIERARCHY: RevisionRoute.LAYOUT,
+        QualityDimension.TYPOGRAPHY: RevisionRoute.TYPOGRAPHY,
+        QualityDimension.COLOR: RevisionRoute.COLOR,
+        QualityDimension.BRAND_FIT: RevisionRoute.LAYOUT,
+        QualityDimension.PRODUCT_FIDELITY: RevisionRoute.PRODUCT,
+        QualityDimension.AUDIENCE_FIT: RevisionRoute.STRATEGY,
+        QualityDimension.PLATFORM_FIT: RevisionRoute.LAYOUT,
+        QualityDimension.DIFFERENTIATION: RevisionRoute.CONCEPT,
+        QualityDimension.OVERALL_POLISH: RevisionRoute.LAYOUT,
+    }[dimension]
 
 
 __all__ = ["QualityScoringStageHandler"]

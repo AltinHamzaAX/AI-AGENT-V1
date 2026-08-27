@@ -419,7 +419,7 @@ class PostSupervisor:
             return SupervisorDecision(
                 action=SupervisorAction.REVISE,
                 next_stage=revision_target,
-                reason="targeted revision requested by quality review",
+                reason="targeted revision requested by revision director",
                 state_requirements=policy.required_sections,
             )
 

@@ -800,6 +800,30 @@ targeted revision record containing keep/change scope, reason, recommended
 action and the render checksum, so the Supervisor invalidates only the affected
 stage and its dependants.
 
+## Revision Director and targeted revision
+
+All quality layers submit typed findings to one deterministic Revision Director
+instead of writing ad-hoc revision dictionaries. It routes copy to Copywriter,
+typography to Typography Engine through DesignSpec, layout to Art Director/Layout
+Engine, color to Color Engine, scene contamination to Scene Generator, product
+fidelity to the Asset Pipeline, strategy to Marketing Strategist, and concept
+defects to Creative Director. When findings span multiple owners, the earliest
+responsible stage wins so its downstream dependants are rebuilt once.
+
+Every persisted instruction has a schema version, unique revision ID, iteration,
+status, requester, responsible component, exact target stage and render
+reference. `keep`, `change`, `why` and `action` are mandatory non-empty arrays;
+keep/change overlap is invalid. The Director derives keep scope from Supervisor
+dependencies, preserving approved truth and unaffected work while excluding all
+outputs invalidated by the selected target. Product correction changes derived
+asset state while preserving the immutable product and semantic contract.
+
+Identical pending instructions are idempotent. A completed correction followed
+by a later recurrence receives a new iteration and revision ID. The Supervisor
+marks only the latest pending instruction completed when its exact target stage
+finishes, invalidates that stage and its dependants, and sends the rebuilt draft
+through verification and scoring again.
+
 ## Observability and execution tracing
 
 The Posts execution boundary records four trace kinds: `agent`, `tool`,
