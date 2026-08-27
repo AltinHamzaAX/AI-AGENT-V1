@@ -284,8 +284,16 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
         SupervisorStagePolicy(
             SupervisorStage.QUALITY_REVIEW,
             dependencies=(SupervisorStage.COMPOSITION,),
-            required_sections=(PostWorkflowSection.POST_DRAFT,),
-            output_sections=(PostWorkflowSection.QUALITY,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.MARKETING_STRATEGY,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.POST_DRAFT,
+            ),
+            output_sections=(
+                PostWorkflowSection.QUALITY,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
         ),
     )
 )
