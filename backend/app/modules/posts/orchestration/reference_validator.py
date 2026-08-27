@@ -21,6 +21,7 @@ from app.modules.posts.domain.observability import ExecutionTraceRecorder
 from app.modules.posts.domain.supervisor import SupervisorStage
 from app.modules.posts.orchestration.supervisor import SupervisorStageContext, SupervisorStageResult
 from app.modules.posts.providers import ProviderBundle
+from app.modules.posts.services.concept_memory import ConceptMemoryService, PostMemoryScopeResolver
 from app.modules.posts.tools.research import ExternalResearchResult
 from app.modules.posts.tools.revision import RevisionDirector, RevisionFinding, RevisionRoute
 
@@ -32,12 +33,18 @@ class ReferenceValidatorStageHandler:
         *,
         max_revisions: int = 2,
         trace_recorder: ExecutionTraceRecorder | None = None,
+        concept_memory: ConceptMemoryService | None = None,
+        memory_scope_resolver: PostMemoryScopeResolver | None = None,
     ) -> None:
         if not 1 <= max_revisions <= 5:
             raise ValueError("max_revisions must be between 1 and 5")
         self._providers = providers
         self._max_revisions = max_revisions
         self._trace_recorder = trace_recorder
+        if (concept_memory is None) != (memory_scope_resolver is None):
+            raise ValueError("concept_memory and memory_scope_resolver must be configured together")
+        self._concept_memory = concept_memory
+        self._memory_scope_resolver = memory_scope_resolver
 
     async def execute(self, context: SupervisorStageContext) -> SupervisorStageResult:
         state = context.workflow_state
@@ -59,6 +66,17 @@ class ReferenceValidatorStageHandler:
                     generation_id=context.generation_id,
                 ),
             )
+        recent_patterns = []
+        if self._concept_memory is not None and self._memory_scope_resolver is not None:
+            scope = await self._memory_scope_resolver.resolve_project_scope(post_id=context.post_id)
+            if scope is None:
+                raise ValueError("creative diversity memory scope could not resolve the post")
+            recent_patterns = list(
+                await self._concept_memory.recall_approved(
+                    scope=scope,
+                    query=_memory_query(state),
+                )
+            )
         report = await ReferenceOriginalityValidator(providers.llm).review(
             ReferenceValidatorInput(
                 semantic_contract=_object(state, PostWorkflowSection.SEMANTIC_CONTRACT),
@@ -79,6 +97,7 @@ class ReferenceValidatorStageHandler:
                 design_spec=DesignSpec.model_validate(
                     _object(state, PostWorkflowSection.DESIGN_SPEC)
                 ),
+                recent_creative_patterns=recent_patterns,
             ),
             revision_requests=requested,
         )
@@ -138,6 +157,20 @@ def _array(state: dict[str, Any], section: PostWorkflowSection) -> list[Any]:
     if not isinstance(value, list):
         raise ValueError(f"{section.value} must be an array")
     return value
+
+
+def _memory_query(state: dict[str, Any]) -> str:
+    strategy = _object(state, PostWorkflowSection.MARKETING_STRATEGY)
+    brand = _object(state, PostWorkflowSection.BRAND)
+    contract = _object(state, PostWorkflowSection.SEMANTIC_CONTRACT)
+    return " ".join(
+        (
+            str(strategy.get("marketing_angle", {}).get("decision", "")),
+            str(strategy.get("single_minded_message", {}).get("decision", "")),
+            str(brand.get("identity_summary", "")),
+            str(contract.get("platform", "")),
+        )
+    )
 
 
 __all__ = ["ReferenceValidatorStageHandler"]

@@ -15,6 +15,10 @@ from app.infrastructure.database.repositories.assets import SQLAlchemyAssetRepos
 from app.infrastructure.database.repositories.supervisor import (
     SQLAlchemySupervisorCheckpointStore,
 )
+from app.infrastructure.database.repositories.worker_semantic_memory import (
+    WorkerPostMemoryScopeResolver,
+    WorkerSemanticMemoryRepository,
+)
 from app.models.posts import PostModel
 from app.modules.posts.domain.observability import ExecutionTraceRecorder
 from app.modules.posts.domain.supervisor import SupervisorStage
@@ -46,6 +50,7 @@ from app.modules.posts.orchestration import (
     WorkflowCompositionResolver,
 )
 from app.modules.posts.providers import ProviderBundle, StorageProvider
+from app.modules.posts.services import ConceptMemoryService, SemanticMemoryService
 from app.modules.posts.tools.composition import ComposerInput
 from app.shared.conversations.domain import ConversationScope
 
@@ -93,6 +98,13 @@ def build_stage_handlers(
     unfinished pipeline reports itself instead of producing a partial post.
     """
     configured = settings or get_settings()
+    concept_memory = ConceptMemoryService(
+        SemanticMemoryService(
+            WorkerSemanticMemoryRepository(session_factory),
+            providers.embedding,
+        )
+    )
+    memory_scope_resolver = WorkerPostMemoryScopeResolver(session_factory)
     return {
         SupervisorStage.CLIENT_UNDERSTANDING: ClientUnderstandingStageHandler(
             providers,
@@ -127,6 +139,8 @@ def build_stage_handlers(
         SupervisorStage.CREATIVE_CONCEPT: CreativeDirectionStageHandler(
             providers,
             trace_recorder=trace_recorder,
+            concept_memory=concept_memory,
+            memory_scope_resolver=memory_scope_resolver,
         ),
         SupervisorStage.COPYWRITING: CopywritingStageHandler(
             providers,
@@ -143,6 +157,8 @@ def build_stage_handlers(
         SupervisorStage.REFERENCE_VALIDATION: ReferenceValidatorStageHandler(
             providers,
             trace_recorder=trace_recorder,
+            concept_memory=concept_memory,
+            memory_scope_resolver=memory_scope_resolver,
         ),
         SupervisorStage.GENERATION_PLANNING: GenerationPlanningStageHandler(),
         SupervisorStage.PRODUCTION: ProductionStageHandler(
@@ -174,7 +190,10 @@ def build_stage_handlers(
             providers,
             trace_recorder=trace_recorder,
         ),
-        SupervisorStage.QUALITY_SCORING: QualityScoringStageHandler(),
+        SupervisorStage.QUALITY_SCORING: QualityScoringStageHandler(
+            concept_memory=concept_memory,
+            memory_scope_resolver=memory_scope_resolver,
+        ),
     }
 
 

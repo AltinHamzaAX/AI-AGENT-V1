@@ -373,6 +373,9 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
             required_sections=(
                 PostWorkflowSection.SEMANTIC_CONTRACT,
                 PostWorkflowSection.CREATIVE_CONCEPT,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.ART_DIRECTION,
+                PostWorkflowSection.DESIGN_SPEC,
                 PostWorkflowSection.POST_DRAFT,
                 PostWorkflowSection.VERIFICATION,
                 PostWorkflowSection.QUALITY,

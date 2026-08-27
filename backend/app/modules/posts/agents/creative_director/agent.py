@@ -288,6 +288,9 @@ def _creative_source(
         "research": research,
         "anti_repetition": {
             "prior_rejected_concepts": list(payload.rejected_concept_memory),
+            "recent_approved_creative_dna": [
+                item.model_dump(mode="json") for item in payload.recent_creative_patterns
+            ],
         },
     }
     allowed = {
@@ -501,8 +504,11 @@ def _system_prompt(allowed_basis: set[str]) -> str:
         "carry at least one honest weakness, and the cards must separate the routes. The "
         f"concept that wins is held to these minimums: {thresholds}. Do not raise a score to "
         "reach them; only a stronger concept clears them.\n"
-        "ANTI-REPETITION. The source may contain prior_rejected_concepts. Do not rename, "
-        "rephrase or recreate those routes; use their failure reasons to explore elsewhere.\n"
+        "ANTI-REPETITION. The source may contain prior_rejected_concepts and "
+        "recent_approved_creative_dna. Do not rename, rephrase or recreate rejected routes. "
+        "Treat approved DNA as AVOID guidance for its repeated concept, visual hook, layout, "
+        "graphic, typography, color, composition, CTA and logo-placement patterns. Preserve "
+        "brand and marketing fit; do not become different merely to be different.\n"
         "EVIDENCE. Every item needs at least two exact basis identifiers from this allowlist: "
         f"{basis}. Every item must cite marketing_strategy; territories must also cite audience "
         "evidence; hooks must also cite brand, research or platform evidence. Research informs "

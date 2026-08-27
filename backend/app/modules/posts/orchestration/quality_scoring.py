@@ -1,11 +1,16 @@
 from typing import Any
 
+from app.modules.posts.agents.art_director import ArtDirection
+from app.modules.posts.agents.copywriter import CopyDraft
+from app.modules.posts.agents.creative_director import CreativeDirection
+from app.modules.posts.agents.design_spec import DesignSpec
 from app.modules.posts.domain.enums import PostWorkflowSection
 from app.modules.posts.domain.supervisor import SupervisorStage
 from app.modules.posts.orchestration.supervisor import (
     SupervisorStageContext,
     SupervisorStageResult,
 )
+from app.modules.posts.services.concept_memory import ConceptMemoryService, PostMemoryScopeResolver
 from app.modules.posts.tools.composition import PostDraft
 from app.modules.posts.tools.quality import (
     ApprovalDecision,
@@ -17,9 +22,19 @@ from app.modules.posts.tools.revision import RevisionDirector, RevisionFinding, 
 
 
 class QualityScoringStageHandler:
-    def __init__(self, *, thresholds: QualityThresholds | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        thresholds: QualityThresholds | None = None,
+        concept_memory: ConceptMemoryService | None = None,
+        memory_scope_resolver: PostMemoryScopeResolver | None = None,
+    ) -> None:
+        if (concept_memory is None) != (memory_scope_resolver is None):
+            raise ValueError("concept_memory and memory_scope_resolver must be configured together")
         self._thresholds = thresholds or QualityThresholds()
         self._engine = QualityScoringEngine()
+        self._concept_memory = concept_memory
+        self._memory_scope_resolver = memory_scope_resolver
 
     async def execute(self, context: SupervisorStageContext) -> SupervisorStageResult:
         state = context.workflow_state
@@ -39,6 +54,30 @@ class QualityScoringStageHandler:
         history = list(_array(state, PostWorkflowSection.REVISION_HISTORY))
         if report.decision not in {ApprovalDecision.PASS, ApprovalDecision.REJECT}:
             history = _request_revision(history, report)
+        if (
+            report.decision is ApprovalDecision.PASS
+            and self._concept_memory is not None
+            and self._memory_scope_resolver is not None
+        ):
+            scope = await self._memory_scope_resolver.resolve_project_scope(
+                post_id=context.post_id
+            )
+            if scope is None:
+                raise ValueError("approved creative memory scope could not resolve the post")
+            await self._concept_memory.remember_approved(
+                scope=scope,
+                direction=CreativeDirection.model_validate(
+                    _object(state, PostWorkflowSection.CREATIVE_CONCEPT)
+                ),
+                copy=CopyDraft.model_validate(_object(state, PostWorkflowSection.COPY)),
+                art=ArtDirection.model_validate(
+                    _object(state, PostWorkflowSection.ART_DIRECTION)
+                ),
+                design_spec=DesignSpec.model_validate(
+                    _object(state, PostWorkflowSection.DESIGN_SPEC)
+                ),
+                generation_id=context.generation_id,
+            )
         return SupervisorStageResult(
             outputs={
                 PostWorkflowSection.QUALITY_APPROVAL: report.model_dump(mode="json"),
