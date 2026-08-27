@@ -3,7 +3,7 @@ const apiProxyTarget = process.env.NUXT_API_PROXY_TARGET || 'http://127.0.0.1:80
 export default defineNuxtConfig({
   compatibilityDate: '2026-08-24',
   devtools: { enabled: true },
-  css: ['~/assets/css/main.css'],
+  css: ['~/assets/css/main.css', '~/assets/css/chat-processing.css'],
   runtimeConfig: {
     public: {
       apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || '/api',

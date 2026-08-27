@@ -5,7 +5,7 @@ export interface Conversation { id: string; project_id: string; title: string | 
 export type ChatIntent = 'GENERAL_CONVERSATION' | 'MARKETING_QUESTION' | 'MISSING_INFORMATION' | 'GENERATE_POST' | 'REVISE_POST' | 'CLARIFICATION'
 export type ChatAction = 'reply' | 'ask' | 'generate' | 'revise'
 
-export interface ChatTurnMetadata { intent?: ChatIntent; action?: ChatAction; reason?: string; questions?: string[]; post_id?: string; generation_id?: string; attempt?: number; revises_generation_id?: string }
+export interface ChatTurnMetadata { intent?: ChatIntent; action?: ChatAction; reason?: string; questions?: string[]; generation_ready?: boolean; post_id?: string; generation_id?: string; attempt?: number; revises_generation_id?: string }
 export interface ChatMessage { id: string; conversation_id: string; sequence: number; role: 'user' | 'assistant' | 'system' | 'tool'; content: string; metadata: { chat?: ChatTurnMetadata } & Record<string, unknown>; created_at: string }
 
 export interface PendingAttachment { id: string; file: File; previewUrl: string }
@@ -29,11 +29,13 @@ export interface ConversationContext {
   missing_fields: string[]
   generated_posts: { post_id: string; generation_id: string; attempt: number; revises_generation_id: string | null; instruction: string | null }[]
   revision_instructions: string[]
+  generation_ready: boolean
 }
 
 export interface ChatProgress { running: boolean; stage: string; result: boolean; error: string; artifacts: GenerationArtifact[] }
+export type ChatActivityState = 'idle' | 'sending' | 'thinking' | 'responding' | 'generating' | 'completed' | 'failed'
 export interface ChatWorkflow { post_id: string; generation_id: string; attempt: number; deduplicated: boolean; revises_generation_id: string | null }
-export interface ChatTurn { user: ChatMessage; assistant: ChatMessage; intent: ChatIntent; action: ChatAction; questions: string[]; workflow: ChatWorkflow | null; context: ConversationContext }
+export interface ChatTurn { user: ChatMessage; assistant: ChatMessage; intent: ChatIntent; action: ChatAction; questions: string[]; workflow: ChatWorkflow | null; context: ConversationContext; generation_ready: boolean }
 export interface ChatState { context: ConversationContext; post_id: string | null; generation: PostGeneration | null; artifacts: GenerationArtifact[] }
 
 export type GenerationJobStatus = 'queued' | 'running' | 'retry_scheduled' | 'completed' | 'failed' | 'dead'
@@ -41,7 +43,38 @@ export interface PostGeneration { id: string; post_id: string; attempt: number; 
 export interface GenerationJob { status: GenerationJobStatus; last_error_code: string | null }
 export interface GenerationArtifact { id: string; kind: 'intermediate' | 'preview' | 'final'; mime_type: string; width: number | null; height: number | null; metadata: Record<string, unknown> }
 
-export const POST_PROGRESS = [['client_understanding', 'Understanding your request'], ['brand_product', 'Analyzing brand'], ['external_research', 'Researching'], ['marketing_strategy', 'Building strategy'], ['creative_concept', 'Creating concept'], ['design_spec', 'Designing'], ['production', 'Generating'], ['design_review', 'Reviewing'], ['quality_scoring', 'Finalizing']] as const
+export const POST_PROGRESS = [['understanding', 'Understanding your request'], ['brand', 'Analyzing brand'], ['research', 'Researching'], ['strategy', 'Building strategy'], ['concept', 'Creating concept'], ['design', 'Designing'], ['generation', 'Generating'], ['review', 'Reviewing'], ['finalizing', 'Finalizing']] as const
+
+export const POST_STAGE_TO_PROGRESS: Record<string, typeof POST_PROGRESS[number][0]> = {
+  client_understanding: 'understanding',
+  semantic_contract: 'understanding',
+  asset_intelligence: 'brand',
+  brand_product: 'brand',
+  audience_intelligence: 'research',
+  external_research: 'research',
+  marketing_strategy: 'strategy',
+  creative_concept: 'concept',
+  copywriting: 'concept',
+  art_direction: 'design',
+  design_spec: 'design',
+  reference_validation: 'design',
+  generation_planning: 'design',
+  production: 'generation',
+  scene_purity: 'generation',
+  composition: 'generation',
+  verification: 'review',
+  quality_review: 'review',
+  design_review: 'review',
+  vision_review: 'review',
+  quality_scoring: 'finalizing',
+}
+
+export function postProgressIndex(stage?: string): number {
+  const phase = stage
+    ? POST_STAGE_TO_PROGRESS[stage] || POST_PROGRESS.find(item => item[0] === stage)?.[0]
+    : undefined
+  return POST_PROGRESS.findIndex(item => item[0] === phase)
+}
 
 export const INTENT_LABELS: Record<ChatIntent, string> = {
   GENERAL_CONVERSATION: 'Conversation',

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ChatMessage, ConversationType } from '~/types/chat'
-import { CONTEXT_LABELS, INTENT_LABELS, POST_PROGRESS } from '~/types/chat'
+import { CONTEXT_LABELS, INTENT_LABELS, POST_PROGRESS, postProgressIndex } from '~/types/chat'
 
 const props = defineProps<{ type: ConversationType, conversationId?: string }>()
 const workspace = useChatWorkspace(props.type)
@@ -12,10 +12,17 @@ const activeId = computed(() => props.conversationId)
 const activeMessages = computed(() => activeId.value ? workspace.messages.value[activeId.value] || [] : [])
 const context = computed(() => activeId.value ? workspace.contexts.value[activeId.value] : undefined)
 const progress = computed(() => activeId.value ? workspace.progress.value[activeId.value] : undefined)
+const activity = computed(() => activeId.value ? workspace.activity.value[activeId.value] || 'idle' : 'idle')
 const knownContext = computed(() => CONTEXT_LABELS
   .map(([key, label]) => [label, context.value?.[key]] as const)
   .filter((entry): entry is readonly [string, string] => typeof entry[1] === 'string' && entry[1].length > 0))
-const stageIndex = computed(() => POST_PROGRESS.findIndex(item => item[0] === progress.value?.stage))
+const stageIndex = computed(() => postProgressIndex(progress.value?.stage))
+const processingLabel = computed(() => {
+  if (activity.value === 'sending') return 'Sending your message...'
+  if (activity.value === 'thinking') return 'Promotiva is thinking...'
+  if (activity.value === 'responding') return 'Promotiva is responding...'
+  return ''
+})
 
 /** Uploads are stored against the message that carried them. */
 function attachmentsFor(message: ChatMessage) {
@@ -65,10 +72,6 @@ async function submit() {
   }
 }
 
-async function generate() {
-  if (!activeId.value || props.type !== 'post' || progress.value?.running) return
-  await workspace.startGeneration(activeId.value)
-}
 </script>
 
 <template>
@@ -90,15 +93,18 @@ async function generate() {
           <div v-if="knownContext.length" class="context-bar">
             <span v-for="[label, value] in knownContext" :key="label" class="context-chip"><b>{{ label }}</b>{{ value }}</span>
           </div>
-          <div v-if="!activeMessages.length" class="welcome-card"><strong>Start anywhere.</strong><p>Say what your business is, ask for advice, or ask straight for a post. I only start generating when you ask and the brief is complete.</p></div>
+          <div v-if="!activeMessages.length" class="welcome-card"><strong>Start anywhere.</strong><p>Say what your business is, ask for advice, or request a post naturally. I will ask only for critical missing details and start automatically when your brief is ready.</p></div>
           <article v-for="message in activeMessages" :key="message.id" class="message" :class="message.role">
             <span>{{ message.role === 'user' ? 'You' : 'Promotiva' }}<i v-if="intentOf(message)" class="intent-chip">{{ intentOf(message) }}</i></span>
             <p>{{ message.content }}</p>
             <div v-if="attachmentsFor(message).length" class="message-assets"><span v-for="asset in attachmentsFor(message)" :key="asset.id">{{ asset.original_filename }}</span></div>
           </article>
+          <article v-if="processingLabel" class="message assistant processing" aria-live="polite" aria-busy="true">
+            <span>Promotiva</span><p><i class="typing-dots"><b /><b /><b /></i>{{ processingLabel }}</p>
+          </article>
           <section v-if="progress && (progress.running || progress.result || progress.error)" class="progress-card">
             <h3>{{ progress.error ? 'Generation needs attention' : progress.result ? 'Post ready' : 'Building your post' }}</h3>
-            <div v-for="([stage, label], index) in POST_PROGRESS" :key="stage" class="progress-step" :class="{ done: stageIndex >= index || progress.result }"><i />{{ label }}</div>
+            <div v-for="([stage, label], index) in POST_PROGRESS" :key="stage" class="progress-step" :class="{ done: progress.result || stageIndex > index, active: !progress.result && stageIndex === index }"><i />{{ label }}</div>
             <p v-if="progress.result">{{ progress.artifacts.length }} output artifact{{ progress.artifacts.length === 1 ? '' : 's' }} produced. Ask for any change and I will revise it.</p>
             <p v-if="progress.error" class="error-message">{{ progress.error }}</p>
           </section>
@@ -106,7 +112,7 @@ async function generate() {
       </template>
       <footer class="composer-wrap">
         <div v-if="workspace.attachments.value.length" class="attachment-strip"><figure v-for="item in workspace.attachments.value" :key="item.id"><img :src="item.previewUrl" :alt="item.file.name"><button @click="workspace.removeAttachment(item.id)">x</button><figcaption>{{ item.file.name }}</figcaption></figure></div>
-        <form class="composer" @submit.prevent="submit"><textarea v-model="draft" rows="2" :placeholder="type === 'post' ? 'Ask, discuss, or request the post...' : 'Describe the campaign...'" @keydown.enter.exact.prevent="submit" /><div class="composer-actions"><label class="attach">+ Images<input type="file" accept="image/*" multiple @change="workspace.addFiles(($event.target as HTMLInputElement).files)"></label><div><button v-if="type === 'post' && activeId" type="button" class="generate" :disabled="progress?.running" @click="generate">{{ progress?.running ? 'Generating...' : 'Generate post' }}</button><button class="send" :disabled="workspace.busy.value || !draft.trim()">Send</button></div></div></form>
+        <form class="composer" @submit.prevent="submit"><textarea v-model="draft" rows="2" :placeholder="type === 'post' ? 'Ask, discuss, or request the post...' : 'Describe the campaign...'" @keydown.enter.exact.prevent="submit" /><div class="composer-actions"><label class="attach">+ Images<input type="file" accept="image/*" multiple @change="workspace.addFiles(($event.target as HTMLInputElement).files)"></label><button class="send" :disabled="workspace.busy.value || !draft.trim()">Send</button></div></form>
         <p v-if="workspace.error.value" class="error-message">{{ workspace.error.value }}</p>
       </footer>
     </main>

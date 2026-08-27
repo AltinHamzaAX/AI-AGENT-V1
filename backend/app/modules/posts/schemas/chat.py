@@ -97,6 +97,7 @@ class ConversationContextRead(BaseModel):
     missing_fields: list[UnderstandingField]
     generated_posts: list[GeneratedPostRead]
     revision_instructions: list[str]
+    generation_ready: bool
 
     @classmethod
     def from_domain(cls, context: ConversationContext) -> Self:
@@ -110,6 +111,7 @@ class ConversationContextRead(BaseModel):
                 GeneratedPostRead.from_domain(item) for item in context.generated_posts
             ],
             revision_instructions=list(context.revision_instructions),
+            generation_ready=context.generation_ready,
         )
 
 
@@ -141,6 +143,7 @@ class ChatTurnRead(BaseModel):
     questions: list[str]
     workflow: ChatWorkflowRead | None
     context: ConversationContextRead
+    generation_ready: bool
 
     @classmethod
     def from_domain(cls, turn: PostChatTurn) -> Self:
@@ -154,6 +157,7 @@ class ChatTurnRead(BaseModel):
                 ChatWorkflowRead.from_domain(turn.workflow) if turn.workflow is not None else None
             ),
             context=ConversationContextRead.from_domain(turn.context),
+            generation_ready=turn.generation_ready,
         )
 
 

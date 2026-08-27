@@ -151,6 +151,11 @@ class ConversationContext(BaseModel):
     def clarification(self) -> ClarificationPlan:
         return ClarificationEngine().evaluate(self)
 
+    @property
+    def generation_ready(self) -> bool:
+        """Whether the accumulated brief can enter the existing Posts workflow."""
+        return not self.clarification().requires_user_input
+
     def merge(self, update: ContextUpdate) -> Self:
         values: dict[str, Any] = {}
         for field in UnderstandingField:
@@ -288,6 +293,9 @@ _GENERATE_PATTERNS = (
     r"\bma\s+(krijo|bej|beje|jep|nis)\b",
     r"\bnise?\s+gjenerimin\b",
     r"\bstart\s+(the\s+)?generation\b",
+    r"\bdua\b[^.!?]{0,100}\b(post|postim|reklame|kreativ)\w*",
+    r"\b(?:i\s+)?(?:want|need|would\s+like)\b[^.!?]{0,100}"
+    r"\b(post|creative|ad)\b",
 )
 
 _REVISE_PATTERNS = (
@@ -455,6 +463,20 @@ class ChatIntentRouter:
             return ChatIntent.GENERATE_POST
         if proposed is ChatIntent.GENERATE_POST and is_question(message):
             return ChatIntent.MARKETING_QUESTION
+        if (
+            context.explicit_generation_requests > 0
+            and proposed
+            in {
+                ChatIntent.CLARIFICATION,
+                ChatIntent.MISSING_INFORMATION,
+                ChatIntent.GENERATE_POST,
+            }
+            and not is_question(message)
+        ):
+            # The client already asked for a post. Later factual answers continue
+            # that request: route them through readiness again instead of forcing
+            # the client to repeat "generate" or press a button.
+            return ChatIntent.GENERATE_POST
         return proposed
 
     def _route_generation(self, context: ConversationContext) -> RoutedTurn:
