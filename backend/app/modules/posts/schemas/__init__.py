@@ -1,5 +1,14 @@
 """Posts transport and application schemas."""
 
+from app.modules.posts.schemas.chat import (
+    ChatStateRead,
+    ChatTurnCreate,
+    ChatTurnRead,
+    ChatWorkflowRead,
+    ContextAssetRead,
+    ConversationContextRead,
+    GeneratedPostRead,
+)
 from app.modules.posts.schemas.models import (
     ExecutionTraceRead,
     GenerationArtifactRead,
@@ -19,6 +28,13 @@ from app.modules.posts.schemas.models import (
 )
 
 __all__ = [
+    "ChatStateRead",
+    "ChatTurnCreate",
+    "ChatTurnRead",
+    "ChatWorkflowRead",
+    "ContextAssetRead",
+    "ConversationContextRead",
+    "GeneratedPostRead",
     "GenerationArtifactRead",
     "ExecutionTraceRead",
     "GenerationJobRead",

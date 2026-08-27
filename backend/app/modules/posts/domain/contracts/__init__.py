@@ -1,6 +1,7 @@
 """Posts domain contracts."""
 
 from app.modules.posts.domain.contracts.agent_tools import (
+    SPECIALIST_TIMEOUT_SECONDS,
     AgentDefinition,
     InvocationContext,
     RetryPolicy,
@@ -11,6 +12,7 @@ from app.modules.posts.domain.contracts.agent_tools import (
 )
 
 __all__ = [
+    "SPECIALIST_TIMEOUT_SECONDS",
     "AgentDefinition",
     "InvocationContext",
     "RetryPolicy",

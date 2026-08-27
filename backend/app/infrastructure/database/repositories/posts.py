@@ -201,6 +201,25 @@ class SQLAlchemyPostRepository:
         model = await self._find_post(post_id=post_id, scope=scope)
         return _post(model) if model else None
 
+    async def find_post_by_conversation(
+        self,
+        *,
+        conversation_id: UUID,
+        scope: PostScope,
+    ) -> Post | None:
+        statement = (
+            select(PostModel)
+            .where(
+                PostModel.conversation_id == conversation_id,
+                PostModel.user_id == scope.user_id,
+                PostModel.project_id == scope.project_id,
+            )
+            .order_by(PostModel.created_at.desc(), PostModel.id.desc())
+            .limit(1)
+        )
+        model = (await self._session.execute(statement)).scalar_one_or_none()
+        return _post(model) if model else None
+
     async def create_generation(
         self,
         *,

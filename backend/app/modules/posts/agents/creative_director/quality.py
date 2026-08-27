@@ -524,7 +524,7 @@ def _validate_safety(
     errors: list[str],
 ) -> None:
     generated_strings = _all_strings(exploration.model_dump(mode="json"))
-    source_text = _semantic(json.dumps(source, ensure_ascii=False, sort_keys=True))
+    source_text = evidence_text(source)
     for value in generated_strings:
         downstream = _DOWNSTREAM_EXECUTION.search(value)
         if downstream:
@@ -610,6 +610,23 @@ def _negated(value: str, start: int) -> bool:
     return bool(_NEGATED_CLAIM_CONTEXT.search(value[max(0, start - 40) : start]))
 
 
+#: Opaque identifiers - fingerprints, checksums, UUIDs - are evidence of
+#: nothing. Left in the evidence text they authorise invented quantities by
+#: accident: a SHA-256 digest contains "12" about a third of the time, and a
+#: quality gate that a hash can unlock is not a gate.
+_OPAQUE_IDENTIFIER = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"
+    r"|\b[0-9a-f]{16,}\b",
+    re.IGNORECASE,
+)
+
+
+def evidence_text(source: dict[str, Any]) -> str:
+    """The source as text a claim may be checked against."""
+    serialized = json.dumps(source, ensure_ascii=False, sort_keys=True)
+    return _semantic(_OPAQUE_IDENTIFIER.sub(" ", serialized))
+
+
 def _invented_numeric(value: str, source_text: str) -> str | None:
     """Clock faces and countdowns are imagery; quantities are claims."""
     for numeric in _NUMERIC_CLAIM.findall(_TIME_LITERAL.sub("", value)):
@@ -680,7 +697,7 @@ def stabilize_repair(
 ) -> tuple[dict[str, Any], bool]:
     """Remove repair drift and reframe copy-like concepts without altering identity fields."""
     stabilized = json.loads(json.dumps(value))
-    source_text = _semantic(json.dumps(source, ensure_ascii=False, sort_keys=True))
+    source_text = evidence_text(source)
     contract = source.get("semantic_contract")
     raw_forbidden = contract.get("forbidden_claims", []) if isinstance(contract, dict) else []
     forbidden = [_semantic(claim) for claim in raw_forbidden if isinstance(claim, str)]

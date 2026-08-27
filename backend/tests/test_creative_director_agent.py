@@ -29,6 +29,7 @@ from app.modules.posts.agents.creative_director import (
     CreativeDirectorAgent,
     CreativeDirectorInput,
 )
+from app.modules.posts.agents.creative_director.quality import evidence_text
 from app.modules.posts.agents.framework import AgentExecutionContext
 from app.modules.posts.agents.marketing_strategist import MarketingStrategy
 from app.modules.posts.domain.contracts import InvocationContext
@@ -1190,3 +1191,18 @@ async def test_explicit_rejection_of_a_guarantee_is_not_treated_as_a_claim() -> 
     result = await _run(payload, _CreativeLLM([output]))
 
     assert "avoids guaranteed" in result.creative_territories[0].rationale
+
+
+def test_an_identifier_cannot_authorise_an_invented_number() -> None:
+    """A digest that happens to contain "12" is not evidence for "12 minutes"."""
+    source = {
+        "semantic_contract": {
+            "fingerprint": "353ed42267e09552abcdef1234567890" * 2,
+            "required_assets": ["11111111-1111-4111-8111-111111111112"],
+            "offer": "35 EUR/day",
+        }
+    }
+    text = evidence_text(source)
+
+    assert "12" not in text
+    assert "35 eur/day" in text

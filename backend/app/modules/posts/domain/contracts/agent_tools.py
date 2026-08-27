@@ -52,6 +52,13 @@ class ToolSecurityPolicy:
         object.__setattr__(self, "capabilities", frozenset(self.capabilities))
 
 
+#: The longest a specialist agent may run. It is never set below the
+#: deployment's provider ceiling: an agent that gives up first would kill a
+#: model call the deployment still permits, and report a working stage as a
+#: timeout. A slower model is a slower stage, not a broken one.
+SPECIALIST_TIMEOUT_SECONDS = 300.0
+
+
 @dataclass(frozen=True, slots=True)
 class AgentDefinition:
     name: str
@@ -120,6 +127,7 @@ def _validate_timeout(name: str, value: float) -> None:
 
 
 __all__ = [
+    "SPECIALIST_TIMEOUT_SECONDS",
     "AgentDefinition",
     "InvocationContext",
     "RetryPolicy",

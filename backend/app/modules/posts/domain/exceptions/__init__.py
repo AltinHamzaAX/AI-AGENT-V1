@@ -23,6 +23,10 @@ class PostGenerationNotFoundError(LookupError):
     pass
 
 
+class ChatMessageNotFoundError(LookupError):
+    """The turn targets a message that is not this conversation's open client turn."""
+
+
 class WorkflowStateConflictError(RuntimeError):
     pass
 
@@ -40,6 +44,7 @@ class SemanticContractHardFailError(RuntimeError):
 __all__ = [
     "AgentNotFoundError",
     "AgentToolFrameworkError",
+    "ChatMessageNotFoundError",
     "DuplicateRegistrationError",
     "InvocationFailedError",
     "InvocationTimeoutError",

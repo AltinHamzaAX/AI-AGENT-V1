@@ -8,11 +8,22 @@ from app.dependencies.conversations import (
     ConversationServiceDependency,
 )
 from app.dependencies.posts import PostChatServiceDependency
+from app.modules.posts.domain.exceptions import ChatMessageNotFoundError
+from app.modules.posts.providers import (
+    ProviderError,
+    ProviderQuotaError,
+    ProviderRateLimitError,
+)
+from app.modules.posts.schemas import (
+    ChatStateRead,
+    ChatTurnCreate,
+    ChatTurnRead,
+    ChatWorkflowRead,
+)
 from app.shared.conversations.domain import ConversationKind, ConversationNotFoundError
 from app.shared.conversations.schemas import (
     ConversationCreate,
     ConversationRead,
-    ConversationTurnRead,
     MessageCreate,
     MessagePageRead,
     MessageRead,
@@ -110,27 +121,90 @@ posts_conversations_router = section_conversation_router(ConversationKind.POST)
 campaigns_conversations_router = section_conversation_router(ConversationKind.CAMPAIGN)
 
 
+def _assistant_unavailable(exc: ProviderError) -> HTTPException:
+    if isinstance(exc, ProviderRateLimitError | ProviderQuotaError):
+        return HTTPException(
+            status_code=429,
+            detail="The assistant is rate limited; try again shortly",
+        )
+    return HTTPException(
+        status_code=502,
+        detail="The assistant is temporarily unavailable; the turn was not saved",
+    )
+
+
 @posts_conversations_router.post(
     "/conversations/{conversation_id}/turns",
-    response_model=ConversationTurnRead,
+    response_model=ChatTurnRead,
     status_code=status.HTTP_201_CREATED,
 )
 async def post_chat_turn(
     conversation_id: UUID,
-    payload: MessageCreate,
+    payload: ChatTurnCreate,
     scope: ConversationScopeDependency,
     service: PostChatServiceDependency,
-) -> ConversationTurnRead:
+) -> ChatTurnRead:
+    """Route one client message and answer it.
+
+    The turn decides for itself whether it only replies, asks for what is
+    missing, or starts the Post workflow; the whole decision and its effects
+    commit together or not at all.
+    """
     try:
         turn = await service.reply(
             conversation_id=conversation_id,
             scope=scope,
             content=payload.content,
+            message_id=payload.message_id,
             metadata=payload.metadata,
         )
     except ConversationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Conversation not found") from exc
-    return ConversationTurnRead(
-        user=MessageRead.from_domain(turn.user),
-        assistant=MessageRead.from_domain(turn.assistant),
-    )
+    except ChatMessageNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Message not found, or it is not the latest client message",
+        ) from exc
+    except ProviderError as exc:
+        raise _assistant_unavailable(exc) from exc
+    return ChatTurnRead.from_domain(turn)
+
+
+@posts_conversations_router.post(
+    "/conversations/{conversation_id}/generations",
+    response_model=ChatWorkflowRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_conversation_generation(
+    conversation_id: UUID,
+    scope: ConversationScopeDependency,
+    service: PostChatServiceDependency,
+) -> ChatWorkflowRead:
+    """Start the Post workflow on an explicit client command.
+
+    Same effect as the routed `GENERATE_POST` intent without classifying a
+    message: repeating the command while nothing new was said returns the
+    generation already running.
+    """
+    try:
+        workflow = await service.start_generation(conversation_id=conversation_id, scope=scope)
+    except ConversationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Conversation not found") from exc
+    return ChatWorkflowRead.from_domain(workflow)
+
+
+@posts_conversations_router.get(
+    "/conversations/{conversation_id}/state",
+    response_model=ChatStateRead,
+)
+async def get_conversation_chat_state(
+    conversation_id: UUID,
+    scope: ConversationScopeDependency,
+    service: PostChatServiceDependency,
+) -> ChatStateRead:
+    """The accumulated context and the latest generation, for a reopened chat."""
+    try:
+        state = await service.state(conversation_id=conversation_id, scope=scope)
+    except ConversationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Conversation not found") from exc
+    return ChatStateRead.from_domain(state)

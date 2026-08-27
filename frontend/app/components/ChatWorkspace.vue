@@ -1,27 +1,41 @@
 <script setup lang="ts">
-import type { ConversationType, GenerationArtifact, GenerationJob, PostGeneration } from '~/types/chat'
-import { POST_PROGRESS } from '~/types/chat'
+import type { ChatMessage, ConversationType } from '~/types/chat'
+import { CONTEXT_LABELS, INTENT_LABELS, POST_PROGRESS } from '~/types/chat'
 
-const props = defineProps<{ type: ConversationType; conversationId?: string }>()
+const props = defineProps<{ type: ConversationType, conversationId?: string }>()
 const workspace = useChatWorkspace(props.type)
 const router = useRouter()
 const draft = ref('')
-const activeId = ref(props.conversationId)
 const section = props.type === 'post' ? 'posts' : 'campaigns'
-const activeMessages = computed(() => activeId.value ? workspace.messages[activeId.value] || [] : [])
-const postByConversation = useState<Record<string, string>>('post-by-conversation', () => ({}))
-const progress = reactive({ running: false, stage: '', result: false, error: '', artifacts: [] as GenerationArtifact[] })
 
+const activeId = computed(() => props.conversationId)
+const activeMessages = computed(() => activeId.value ? workspace.messages.value[activeId.value] || [] : [])
+const context = computed(() => activeId.value ? workspace.contexts.value[activeId.value] : undefined)
+const progress = computed(() => activeId.value ? workspace.progress.value[activeId.value] : undefined)
+const knownContext = computed(() => CONTEXT_LABELS
+  .map(([key, label]) => [label, context.value?.[key]] as const)
+  .filter((entry): entry is readonly [string, string] => typeof entry[1] === 'string' && entry[1].length > 0))
+const stageIndex = computed(() => POST_PROGRESS.findIndex(item => item[0] === progress.value?.stage))
+
+/** Uploads are stored against the message that carried them. */
+function attachmentsFor(message: ChatMessage) {
+  return (context.value?.attachments || []).filter(asset => asset.message_id === message.id)
+}
+
+function intentOf(message: ChatMessage) {
+  const intent = message.metadata?.chat?.intent
+  return intent ? INTENT_LABELS[intent] : null
+}
+
+// Opening a chat replaces this page component, so both entry points reload the
+// chat the same way. The workspace keeps any turn already in flight.
 onMounted(async () => {
   await workspace.loadConversations()
-  if (activeId.value) await workspace.loadConversation(activeId.value)
+  if (activeId.value) await workspace.open(activeId.value)
 })
+
 watch(() => props.conversationId, async (id) => {
-  activeId.value = id
-  progress.result = false
-  progress.error = ''
-  progress.artifacts = []
-  if (id) await workspace.loadConversation(id)
+  if (id) await workspace.open(id)
 })
 
 async function newChat() {
@@ -32,68 +46,28 @@ async function newChat() {
 
 async function submit() {
   const content = draft.value.trim()
-  if (!content) return
-  if (!activeId.value) {
+  if (!content || workspace.busy.value) return
+  let conversationId = activeId.value
+  if (!conversationId) {
     const fallback = props.type === 'post' ? 'New Post Chat' : 'New Campaign Chat'
     const title = content.length > 60 ? `${content.slice(0, 57)}...` : content
     const chat = await workspace.createConversation(title || fallback)
-    activeId.value = chat.id
+    conversationId = chat.id
     await router.push(`/${section}/${chat.id}`)
   }
-  await workspace.send(activeId.value, content)
+  const sent = draft.value
   draft.value = ''
-}
-
-function stageFromState(state: Record<string, any>): string {
-  const stage = state?.state?.supervisor?.current_stage
-  return typeof stage === 'string' && POST_PROGRESS.some(item => item[0] === stage) ? stage : progress.stage
+  try {
+    await workspace.send(conversationId, content)
+  }
+  catch {
+    draft.value = sent
+  }
 }
 
 async function generate() {
-  if (!activeId.value || props.type !== 'post') return
-  progress.running = true
-  progress.result = false
-  progress.error = ''
-  progress.artifacts = []
-  progress.stage = POST_PROGRESS[0][0]
-  try {
-    const api = useRuntimeConfig().public.apiBaseUrl
-    let postId = postByConversation.value[activeId.value]
-    if (!postId) {
-      const post = await workspace.request<{ id: string }>(`${api}/posts`, {
-        method: 'POST',
-        body: { conversation_id: activeId.value, title: 'Generated post' },
-      })
-      postId = post.id
-      postByConversation.value[activeId.value] = postId
-    }
-    const generation = await workspace.request<PostGeneration>(`${api}/posts/${postId}/generations`, { method: 'POST' })
-    const deadline = Date.now() + 10 * 60 * 1000
-    while (Date.now() < deadline) {
-      const job = await workspace.request<GenerationJob>(`${api}/posts/${postId}/generations/${generation.id}/job`)
-      try {
-        const state = await workspace.request<Record<string, any>>(`${api}/posts/${postId}/generations/${generation.id}/state`)
-        progress.stage = stageFromState(state)
-      } catch {
-        // Workflow state is initialized asynchronously; job status is authoritative.
-      }
-      if (job.status === 'completed') {
-        progress.stage = POST_PROGRESS.at(-1)![0]
-        progress.artifacts = await workspace.request<GenerationArtifact[]>(`${api}/posts/${postId}/generations/${generation.id}/artifacts`)
-        progress.result = true
-        return
-      }
-      if (job.status === 'failed' || job.status === 'dead') {
-        throw new Error(job.last_error_code ? `Generation failed: ${job.last_error_code}` : 'Generation failed.')
-      }
-      await new Promise(resolve => setTimeout(resolve, 1500))
-    }
-    throw new Error('Generation is still running. You can check status again shortly.')
-  } catch (cause) {
-    progress.error = cause instanceof Error ? cause.message : 'Generation failed.'
-  } finally {
-    progress.running = false
-  }
+  if (!activeId.value || props.type !== 'post' || progress.value?.running) return
+  await workspace.startGeneration(activeId.value)
 }
 </script>
 
@@ -110,22 +84,29 @@ async function generate() {
       <NuxtLink v-for="chat in workspace.conversations.value" :key="chat.id" :to="`/${section}/${chat.id}`" class="chat-link" :class="{ active: chat.id === activeId }"><span>{{ chat.title || `Untitled ${type}` }}</span><small>{{ new Date(chat.updated_at).toLocaleDateString() }}</small></NuxtLink>
     </aside>
     <main class="conversation-pane">
-      <section v-if="!activeId" class="empty-state"><span class="spark">*</span><h1>What should we create?</h1><p>{{ type === 'post' ? 'Write your brief below. Include the business, objective, audience, offer, platform, and any constraints.' : 'Describe your campaign below. Campaign generation arrives with the Campaign Engine.' }}</p></section>
+      <section v-if="!activeId" class="empty-state"><span class="spark">*</span><h1>What should we create?</h1><p>{{ type === 'post' ? 'Tell me about your business and what you want to promote. Ask questions, share images, and I will build the post when the brief is ready.' : 'Describe your campaign below. Campaign generation arrives with the Campaign Engine.' }}</p></section>
       <template v-else>
         <section class="messages">
-          <div v-if="!activeMessages.length" class="welcome-card"><strong>Start with the outcome.</strong><p>Describe the business, audience, offer, platform, and what success looks like.</p></div>
-          <article v-for="message in activeMessages" :key="message.id" class="message" :class="message.role"><span>{{ message.role === 'user' ? 'You' : 'Promotiva' }}</span><p>{{ message.content }}</p></article>
-          <section v-if="progress.running || progress.result || progress.error" class="progress-card">
+          <div v-if="knownContext.length" class="context-bar">
+            <span v-for="[label, value] in knownContext" :key="label" class="context-chip"><b>{{ label }}</b>{{ value }}</span>
+          </div>
+          <div v-if="!activeMessages.length" class="welcome-card"><strong>Start anywhere.</strong><p>Say what your business is, ask for advice, or ask straight for a post. I only start generating when you ask and the brief is complete.</p></div>
+          <article v-for="message in activeMessages" :key="message.id" class="message" :class="message.role">
+            <span>{{ message.role === 'user' ? 'You' : 'Promotiva' }}<i v-if="intentOf(message)" class="intent-chip">{{ intentOf(message) }}</i></span>
+            <p>{{ message.content }}</p>
+            <div v-if="attachmentsFor(message).length" class="message-assets"><span v-for="asset in attachmentsFor(message)" :key="asset.id">{{ asset.original_filename }}</span></div>
+          </article>
+          <section v-if="progress && (progress.running || progress.result || progress.error)" class="progress-card">
             <h3>{{ progress.error ? 'Generation needs attention' : progress.result ? 'Post ready' : 'Building your post' }}</h3>
-            <div v-for="([stage, label], index) in POST_PROGRESS" :key="stage" class="progress-step" :class="{ done: POST_PROGRESS.findIndex(item => item[0] === progress.stage) >= index || progress.result }"><i />{{ label }}</div>
-            <p v-if="progress.result">{{ progress.artifacts.length }} output artifact{{ progress.artifacts.length === 1 ? '' : 's' }} produced.</p>
+            <div v-for="([stage, label], index) in POST_PROGRESS" :key="stage" class="progress-step" :class="{ done: stageIndex >= index || progress.result }"><i />{{ label }}</div>
+            <p v-if="progress.result">{{ progress.artifacts.length }} output artifact{{ progress.artifacts.length === 1 ? '' : 's' }} produced. Ask for any change and I will revise it.</p>
             <p v-if="progress.error" class="error-message">{{ progress.error }}</p>
           </section>
         </section>
       </template>
       <footer class="composer-wrap">
         <div v-if="workspace.attachments.value.length" class="attachment-strip"><figure v-for="item in workspace.attachments.value" :key="item.id"><img :src="item.previewUrl" :alt="item.file.name"><button @click="workspace.removeAttachment(item.id)">x</button><figcaption>{{ item.file.name }}</figcaption></figure></div>
-        <form class="composer" @submit.prevent="submit"><textarea v-model="draft" rows="2" :placeholder="type === 'post' ? 'Write a post brief or request a revision...' : 'Describe the campaign...'" @keydown.enter.exact.prevent="submit" /><div class="composer-actions"><label class="attach">+ Images<input type="file" accept="image/*" multiple @change="workspace.addFiles(($event.target as HTMLInputElement).files)"></label><div><button v-if="type === 'post' && activeId" type="button" class="generate" :disabled="progress.running" @click="generate">{{ progress.running ? 'Generating...' : 'Generate post' }}</button><button class="send" :disabled="workspace.busy.value || !draft.trim()">Send</button></div></div></form>
+        <form class="composer" @submit.prevent="submit"><textarea v-model="draft" rows="2" :placeholder="type === 'post' ? 'Ask, discuss, or request the post...' : 'Describe the campaign...'" @keydown.enter.exact.prevent="submit" /><div class="composer-actions"><label class="attach">+ Images<input type="file" accept="image/*" multiple @change="workspace.addFiles(($event.target as HTMLInputElement).files)"></label><div><button v-if="type === 'post' && activeId" type="button" class="generate" :disabled="progress?.running" @click="generate">{{ progress?.running ? 'Generating...' : 'Generate post' }}</button><button class="send" :disabled="workspace.busy.value || !draft.trim()">Send</button></div></div></form>
         <p v-if="workspace.error.value" class="error-message">{{ workspace.error.value }}</p>
       </footer>
     </main>

@@ -39,11 +39,14 @@ def test_engine_asks_only_for_critical_missing_information() -> None:
     assert [question.field for question in plan.questions] == [
         UnderstandingField.PRODUCT_SERVICE,
         UnderstandingField.GOAL,
+        UnderstandingField.AUDIENCE,
     ]
     assert classifications[UnderstandingField.BUSINESS] is MissingInformationClass.OPTIONAL
     assert classifications[UnderstandingField.PRODUCT_SERVICE] is MissingInformationClass.CRITICAL
     assert classifications[UnderstandingField.GOAL] is MissingInformationClass.CRITICAL
-    assert classifications[UnderstandingField.AUDIENCE] is MissingInformationClass.RESEARCHABLE
+    # The semantic contract declares the audience and marketing strategy grounds
+    # its call to action in it, so neither can be researched into existence.
+    assert classifications[UnderstandingField.AUDIENCE] is MissingInformationClass.CRITICAL
     assert classifications[UnderstandingField.PLATFORM] is MissingInformationClass.INFERABLE
     assert classifications[UnderstandingField.OFFER] is MissingInformationClass.OPTIONAL
     assert all("?" in question.question for question in plan.questions)
@@ -56,7 +59,6 @@ def test_named_business_makes_missing_product_inferable_without_user_friction() 
         language="shqip",
         missing_fields=[
             UnderstandingField.PRODUCT_SERVICE,
-            UnderstandingField.AUDIENCE,
             UnderstandingField.MARKET,
             UnderstandingField.OFFER,
         ],
@@ -123,7 +125,7 @@ def test_supervisor_continues_when_only_non_blocking_information_is_missing() ->
                 business="LUMMA",
                 goal="more visits",
                 missing_fields=[
-                    UnderstandingField.AUDIENCE,
+                    UnderstandingField.MARKET,
                     UnderstandingField.OFFER,
                 ],
             )

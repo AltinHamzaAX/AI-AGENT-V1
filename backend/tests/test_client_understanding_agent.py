@@ -39,6 +39,7 @@ from app.modules.posts.domain.supervisor import (
 from app.modules.posts.orchestration import (
     ClientUnderstandingStageHandler,
     PostSupervisorExecutor,
+    SupervisorBlockedError,
     SupervisorStageContext,
 )
 from app.modules.posts.providers import LLMRequest, LLMResponse, ProviderBundle
@@ -186,12 +187,17 @@ async def test_client_understanding_extracts_lumma_brief_without_strategy_drift(
     ]
     assert UnderstandingField.AUDIENCE.value in brief["missing_fields"]
     assert UnderstandingField.OFFER.value in brief["missing_fields"]
-    assert brief["clarification"]["requires_user_input"] is False
-    assert brief["clarification"]["questions"] == []
+    # The extraction is faithful; the audience the client never named is what
+    # still needs asking, and the optional offer is not.
+    assert brief["clarification"]["requires_user_input"] is True
+    assert [question["field"] for question in brief["clarification"]["questions"]] == [
+        "audience",
+        "cta_intent",
+    ]
     classifications = {
         item["field"]: item["classification"] for item in brief["clarification"]["items"]
     }
-    assert classifications["audience"] == "RESEARCHABLE"
+    assert classifications["audience"] == "CRITICAL"
     assert classifications["offer"] == "OPTIONAL"
     assert brief["constraints"] == [
         "Use only verified business facts",
@@ -339,6 +345,8 @@ async def test_brand_name_alone_cannot_masquerade_as_the_promoted_product() -> N
     assert [question["field"] for question in brief["clarification"]["questions"]] == [
         "product_service",
         "goal",
+        "audience",
+        "cta_intent",
     ]
 
 
@@ -430,7 +438,11 @@ async def test_supervisor_executes_understanding_and_persists_only_brief(
         trace_recorder=recorder,
     )
 
-    await executor.execute(generation_id=generation.id, job_id=generation.job_id)
+    # The LUMMA brief names no audience, so the supervisor stops for
+    # clarification right after understanding: the stage still ran, and it
+    # still wrote nothing but its own section.
+    with pytest.raises(SupervisorBlockedError):
+        await executor.execute(generation_id=generation.id, job_id=generation.job_id)
 
     async with understanding_session_factory() as session:
         persisted = await PostsService(SQLAlchemyPostRepository(session)).get_workflow_state(

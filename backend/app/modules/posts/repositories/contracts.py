@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from typing import Any, Protocol
 from uuid import UUID
 
+from app.modules.posts.domain.chat import ConversationContext
 from app.modules.posts.domain.entities import (
     GenerationArtifact,
     Post,
@@ -45,6 +46,13 @@ class PostRepository(Protocol):
     ) -> Post: ...
 
     async def get_post(self, *, post_id: UUID, scope: PostScope) -> Post | None: ...
+
+    async def find_post_by_conversation(
+        self,
+        *,
+        conversation_id: UUID,
+        scope: PostScope,
+    ) -> Post | None: ...
 
     async def create_generation(
         self,
@@ -197,3 +205,20 @@ class SemanticMemoryRepository(Protocol):
         retryable: bool,
         retry_delay_seconds: int,
     ) -> GenerationJob | None: ...
+
+
+class PostConversationContextRepository(Protocol):
+    async def get(
+        self,
+        *,
+        conversation_id: UUID,
+        scope: PostScope,
+    ) -> ConversationContext | None: ...
+
+    async def save(
+        self,
+        *,
+        conversation_id: UUID,
+        scope: PostScope,
+        context: ConversationContext,
+    ) -> ConversationContext: ...
