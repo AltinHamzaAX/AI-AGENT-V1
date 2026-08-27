@@ -6,7 +6,7 @@ from app.modules.posts.agents.design_critic import (
     DesignCriticDecision,
     DesignCriticInput,
     DesignCriticReport,
-    DesignIssueSeverity,
+    DesignDimension,
     SeniorDesignCritic,
 )
 from app.modules.posts.agents.design_spec import DesignSpec
@@ -21,6 +21,7 @@ from app.modules.posts.orchestration.supervisor import (
 )
 from app.modules.posts.providers import ProviderBundle
 from app.modules.posts.tools.composition import PostDraft
+from app.modules.posts.tools.revision import RevisionDirector, RevisionFinding, RevisionRoute
 
 
 class DesignCriticStageHandler:
@@ -105,43 +106,34 @@ def _revision_requests(history: list[Any]) -> int:
 
 
 def _request_revision(history: list[Any], report: DesignCriticReport) -> list[Any]:
-    severity_order = {
-        DesignIssueSeverity.CRITICAL: 4,
-        DesignIssueSeverity.HIGH: 3,
-        DesignIssueSeverity.MEDIUM: 2,
-        DesignIssueSeverity.LOW: 1,
-    }
-    primary = max(report.problems, key=lambda problem: severity_order[problem.severity])
-    changed_sections = {
-        {
-            SupervisorStage.CREATIVE_CONCEPT: PostWorkflowSection.CREATIVE_CONCEPT,
-            SupervisorStage.ART_DIRECTION: PostWorkflowSection.ART_DIRECTION,
-            SupervisorStage.DESIGN_SPEC: PostWorkflowSection.DESIGN_SPEC,
-        }[problem.target_stage]
+    findings = [
+        RevisionFinding(
+            route=_revision_route(problem.dimension, problem.target_stage),
+            why=problem.cause,
+            action=problem.recommended_change,
+            location=problem.location,
+            source=f"design_critic:{problem.dimension.value}",
+        )
         for problem in report.problems
-    }
-    entry = {
-        "status": "pending",
-        "target_stage": primary.target_stage.value,
-        "requested_by": SupervisorStage.DESIGN_REVIEW.value,
-        "reason": primary.cause,
-        "recommended_action": primary.recommended_change,
-        "location": primary.location,
-        "keep": [
-            PostWorkflowSection.SEMANTIC_CONTRACT.value,
-            PostWorkflowSection.BRAND.value,
-            PostWorkflowSection.PRODUCT.value,
-            PostWorkflowSection.ASSETS.value,
-            PostWorkflowSection.MARKETING_STRATEGY.value,
-            PostWorkflowSection.COPY.value,
-        ],
-        "change": sorted(section.value for section in changed_sections),
-        "problems": [problem.model_dump(mode="json") for problem in report.problems],
-        "render_fingerprint": report.render_fingerprint,
-    }
-    if history and history[-1] == entry:
-        return history
-    return [*history, entry]
+    ]
+    director = RevisionDirector()
+    instruction = director.plan(
+        findings,
+        requested_by=SupervisorStage.DESIGN_REVIEW,
+        history=history,
+        render_reference=report.render_fingerprint,
+    )
+    return director.append(history, instruction)
+
+
+def _revision_route(dimension, target_stage: SupervisorStage) -> RevisionRoute:
+    if target_stage is SupervisorStage.CREATIVE_CONCEPT:
+        return RevisionRoute.CONCEPT
+    if dimension is DesignDimension.TYPOGRAPHY:
+        return RevisionRoute.TYPOGRAPHY
+    if dimension is DesignDimension.COLOR:
+        return RevisionRoute.COLOR
+    return RevisionRoute.LAYOUT
 
 
 __all__ = ["DesignCriticStageHandler"]

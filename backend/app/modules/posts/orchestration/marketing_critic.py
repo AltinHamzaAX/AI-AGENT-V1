@@ -7,7 +7,6 @@ from app.modules.posts.agents.marketing_critic import (
     MarketingCriticDecision,
     MarketingCriticInput,
     MarketingCriticReport,
-    MarketingIssueSeverity,
 )
 from app.modules.posts.agents.marketing_strategist import MarketingStrategy
 from app.modules.posts.domain.contracts import InvocationContext
@@ -21,6 +20,7 @@ from app.modules.posts.orchestration.supervisor import (
 )
 from app.modules.posts.providers import ProviderBundle
 from app.modules.posts.tools.composition import PostDraft
+from app.modules.posts.tools.revision import RevisionDirector, RevisionFinding, RevisionRoute
 
 
 class MarketingCriticStageHandler:
@@ -110,43 +110,27 @@ def _revision_requests(history: list[Any]) -> int:
 
 
 def _request_revision(history: list[Any], report: MarketingCriticReport) -> list[Any]:
-    severity_order = {
-        MarketingIssueSeverity.CRITICAL: 4,
-        MarketingIssueSeverity.HIGH: 3,
-        MarketingIssueSeverity.MEDIUM: 2,
-        MarketingIssueSeverity.LOW: 1,
-    }
-    primary = max(report.issues, key=lambda issue: severity_order[issue.severity])
-    changed_sections = {
-        (
-            PostWorkflowSection.COPY
-            if issue.target_stage is SupervisorStage.COPYWRITING
-            else PostWorkflowSection.MARKETING_STRATEGY
+    findings = [
+        RevisionFinding(
+            route=(
+                RevisionRoute.COPY
+                if issue.target_stage is SupervisorStage.COPYWRITING
+                else RevisionRoute.STRATEGY
+            ),
+            why=issue.reason,
+            action=issue.recommended_action,
+            source=f"marketing_critic:{issue.dimension.value}",
         )
         for issue in report.issues
-    }
-    entry = {
-        "status": "pending",
-        "target_stage": primary.target_stage.value,
-        "requested_by": SupervisorStage.QUALITY_REVIEW.value,
-        "reason": primary.reason,
-        "recommended_action": primary.recommended_action,
-        "keep": [
-            PostWorkflowSection.SEMANTIC_CONTRACT.value,
-            PostWorkflowSection.BRAND.value,
-            PostWorkflowSection.PRODUCT.value,
-            PostWorkflowSection.ASSETS.value,
-            PostWorkflowSection.AUDIENCE.value,
-            PostWorkflowSection.RESEARCH.value,
-        ],
-        "change": sorted(section.value for section in changed_sections),
-        "issues": [issue.model_dump(mode="json") for issue in report.issues],
-        "score": report.score,
-        "render_fingerprint": report.render_fingerprint,
-    }
-    if history and history[-1] == entry:
-        return history
-    return [*history, entry]
+    ]
+    director = RevisionDirector()
+    instruction = director.plan(
+        findings,
+        requested_by=SupervisorStage.QUALITY_REVIEW,
+        history=history,
+        render_reference=report.render_fingerprint,
+    )
+    return director.append(history, instruction)
 
 
 __all__ = ["MarketingCriticStageHandler"]

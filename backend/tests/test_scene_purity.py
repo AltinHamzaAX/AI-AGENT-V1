@@ -416,10 +416,14 @@ async def test_contaminated_plate_sends_production_back_for_a_new_scene() -> Non
     assert history[0]["status"] == "pending"
     assert history[0]["target_stage"] == SupervisorStage.PRODUCTION.value
     assert history[0]["requested_by"] == SupervisorStage.SCENE_PURITY.value
-    assert set(history[0]["contaminations"]) == {
-        ContaminationKind.FAKE_TEXT.value,
-        ContaminationKind.FAKE_LOGO.value,
-        ContaminationKind.UNEXPECTED_BRAND.value,
+    assert history[0]["route"] == "scene"
+    assert history[0]["responsible_component"] == "scene_generator"
+    assert history[0]["change"] == [PostWorkflowSection.GENERATION_ARTIFACTS.value]
+    assert history[0]["why"] and history[0]["action"] and history[0]["keep"]
+    assert {item["source"] for item in history[0]["findings"]} == {
+        f"scene_purity:{ContaminationKind.FAKE_TEXT.value}",
+        f"scene_purity:{ContaminationKind.FAKE_LOGO.value}",
+        f"scene_purity:{ContaminationKind.UNEXPECTED_BRAND.value}",
     }
 
 

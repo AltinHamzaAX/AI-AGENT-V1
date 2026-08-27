@@ -276,6 +276,9 @@ async def test_stage_persists_report_and_routes_targeted_revision() -> None:
     assert report["decision"] == DesignCriticDecision.REVISE.value
     assert history[-1]["target_stage"] == SupervisorStage.DESIGN_SPEC.value
     assert history[-1]["change"] == [PostWorkflowSection.DESIGN_SPEC.value]
+    assert history[-1]["route"] == "layout"
+    assert history[-1]["responsible_component"] == "art_director/layout_engine"
+    assert history[-1]["why"] and history[-1]["action"] and history[-1]["keep"]
     state[PostWorkflowSection.DESIGN_QUALITY.value] = report
     state[PostWorkflowSection.REVISION_HISTORY.value] = history
     decision = PostSupervisor().decide(state)
