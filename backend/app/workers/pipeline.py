@@ -36,6 +36,7 @@ from app.modules.posts.orchestration import (
     PostSupervisorExecutor,
     ProductionStageHandler,
     QualityScoringStageHandler,
+    ReferenceValidatorStageHandler,
     ScenePurityStageHandler,
     SemanticContractStageHandler,
     SupervisorStageContext,
@@ -136,6 +137,10 @@ def build_stage_handlers(
             trace_recorder=trace_recorder,
         ),
         SupervisorStage.DESIGN_SPEC: DesignSpecStageHandler(
+            providers,
+            trace_recorder=trace_recorder,
+        ),
+        SupervisorStage.REFERENCE_VALIDATION: ReferenceValidatorStageHandler(
             providers,
             trace_recorder=trace_recorder,
         ),

@@ -214,6 +214,7 @@ class WorkflowStateData(BaseModel):
     copy_data: dict[str, JsonValue] = Field(alias="copy")
     art_direction: dict[str, JsonValue]
     design_spec: dict[str, JsonValue]
+    reference_validation: dict[str, JsonValue]
     generation_plan: dict[str, JsonValue]
     generation_artifacts: list[JsonValue]
     scene_purity: dict[str, JsonValue]

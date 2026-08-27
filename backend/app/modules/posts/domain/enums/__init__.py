@@ -42,6 +42,7 @@ class PostWorkflowSection(StrEnum):
     COPY = "copy"
     ART_DIRECTION = "art_direction"
     DESIGN_SPEC = "design_spec"
+    REFERENCE_VALIDATION = "reference_validation"
     GENERATION_PLAN = "generation_plan"
     GENERATION_ARTIFACTS = "generation_artifacts"
     SCENE_PURITY = "scene_purity"

@@ -34,6 +34,7 @@ from app.modules.posts.orchestration.marketing_strategy import (
 )
 from app.modules.posts.orchestration.production import ProductionStageHandler
 from app.modules.posts.orchestration.quality_scoring import QualityScoringStageHandler
+from app.modules.posts.orchestration.reference_validator import ReferenceValidatorStageHandler
 from app.modules.posts.orchestration.scene_purity import ScenePurityStageHandler
 from app.modules.posts.orchestration.semantic_contract import (
     SemanticContractStageHandler,
@@ -64,6 +65,7 @@ __all__ = [
     "VerificationStageHandler",
     "VisionCriticStageHandler",
     "QualityScoringStageHandler",
+    "ReferenceValidatorStageHandler",
     "CopywritingStageHandler",
     "ExternalResearchStageHandler",
     "GenerationPlanningStageHandler",

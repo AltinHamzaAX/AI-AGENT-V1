@@ -27,6 +27,7 @@ class SupervisorStage(StrEnum):
     COPYWRITING = "copywriting"
     ART_DIRECTION = "art_direction"
     DESIGN_SPEC = "design_spec"
+    REFERENCE_VALIDATION = "reference_validation"
     GENERATION_PLANNING = "generation_planning"
     PRODUCTION = "production"
     SCENE_PURITY = "scene_purity"
@@ -236,10 +237,32 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
             output_sections=(PostWorkflowSection.DESIGN_SPEC,),
         ),
         SupervisorStagePolicy(
+            SupervisorStage.REFERENCE_VALIDATION,
+            dependencies=(SupervisorStage.DESIGN_SPEC,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.BRAND,
+                PostWorkflowSection.RESEARCH,
+                PostWorkflowSection.MARKETING_STRATEGY,
+                PostWorkflowSection.CREATIVE_CONCEPT,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.ART_DIRECTION,
+                PostWorkflowSection.DESIGN_SPEC,
+            ),
+            output_sections=(
+                PostWorkflowSection.REFERENCE_VALIDATION,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
+        ),
+        SupervisorStagePolicy(
             SupervisorStage.GENERATION_PLANNING,
-            dependencies=(SupervisorStage.DESIGN_SPEC, SupervisorStage.ASSET_INTELLIGENCE),
+            dependencies=(
+                SupervisorStage.REFERENCE_VALIDATION,
+                SupervisorStage.ASSET_INTELLIGENCE,
+            ),
             required_sections=(
                 PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.REFERENCE_VALIDATION,
                 PostWorkflowSection.SEMANTIC_CONTRACT,
                 PostWorkflowSection.ASSETS,
             ),
