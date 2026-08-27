@@ -34,6 +34,7 @@ class SupervisorStage(StrEnum):
     VERIFICATION = "verification"
     QUALITY_REVIEW = "quality_review"
     DESIGN_REVIEW = "design_review"
+    QUALITY_SCORING = "quality_scoring"
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,6 +327,22 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
                 PostWorkflowSection.REVISION_HISTORY,
             ),
         ),
+        SupervisorStagePolicy(
+            SupervisorStage.QUALITY_SCORING,
+            dependencies=(SupervisorStage.DESIGN_REVIEW,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.CREATIVE_CONCEPT,
+                PostWorkflowSection.POST_DRAFT,
+                PostWorkflowSection.VERIFICATION,
+                PostWorkflowSection.QUALITY,
+                PostWorkflowSection.DESIGN_QUALITY,
+            ),
+            output_sections=(
+                PostWorkflowSection.QUALITY_APPROVAL,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
+        ),
     )
 )
 
@@ -350,6 +367,7 @@ class PostSupervisor:
         quality = state[PostWorkflowSection.QUALITY.value]
         design_quality = state[PostWorkflowSection.DESIGN_QUALITY.value]
         verification = state[PostWorkflowSection.VERIFICATION.value]
+        approval = state[PostWorkflowSection.QUALITY_APPROVAL.value]
         # Read before any score, and terminal: a hard verification gate is not
         # weighed against how good the post looks, so nothing below can revive a
         # render that failed one.
@@ -370,6 +388,14 @@ class PostSupervisor:
                 next_stage=None,
                 reason="quality hard gate blocked the workflow",
                 state_requirements=(PostWorkflowSection.QUALITY,),
+                terminal=True,
+            )
+        if approval.get("decision") == "REJECT":
+            return SupervisorDecision(
+                action=SupervisorAction.STOP,
+                next_stage=None,
+                reason="quality approval engine rejected the render",
+                state_requirements=(PostWorkflowSection.QUALITY_APPROVAL,),
                 terminal=True,
             )
 
@@ -490,6 +516,16 @@ class PostSupervisor:
                 reason="explicit senior design approval is required before completion",
                 state_requirements=(PostWorkflowSection.DESIGN_QUALITY,),
             )
+        scoring_enabled = any(
+            policy.stage is SupervisorStage.QUALITY_SCORING for policy in self._plan.stages
+        )
+        if scoring_enabled and approval.get("decision") != "PASS":
+            return SupervisorDecision(
+                action=SupervisorAction.STOP,
+                next_stage=SupervisorStage.QUALITY_SCORING,
+                reason="standardized quality thresholds require explicit approval",
+                state_requirements=(PostWorkflowSection.QUALITY_APPROVAL,),
+            )
         return SupervisorDecision(
             action=SupervisorAction.STOP,
             next_stage=None,
@@ -498,6 +534,7 @@ class PostSupervisor:
                 PostWorkflowSection.VERIFICATION,
                 PostWorkflowSection.QUALITY,
                 PostWorkflowSection.DESIGN_QUALITY,
+                PostWorkflowSection.QUALITY_APPROVAL,
             ),
             terminal=True,
         )

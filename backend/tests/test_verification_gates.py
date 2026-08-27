@@ -519,6 +519,7 @@ async def test_blocked_verification_stops_the_workflow_at_a_perfect_score() -> N
     state[PostWorkflowSection.VERIFICATION.value] = result.outputs[PostWorkflowSection.VERIFICATION]
     state[PostWorkflowSection.QUALITY.value] = {"decision": "PASS", "score": 9.8}
     state[PostWorkflowSection.DESIGN_QUALITY.value] = {"decision": "PASS"}
+    state[PostWorkflowSection.QUALITY_APPROVAL.value] = {"decision": "PASS"}
 
     decision = PostSupervisor().decide(state)
 
@@ -560,6 +561,7 @@ def test_workflow_completes_only_when_gates_and_reviews_all_pass() -> None:
     state[PostWorkflowSection.VERIFICATION.value] = {"decision": "PASS"}
     state[PostWorkflowSection.QUALITY.value] = {"decision": "PASS"}
     state[PostWorkflowSection.DESIGN_QUALITY.value] = {"decision": "PASS"}
+    state[PostWorkflowSection.QUALITY_APPROVAL.value] = {"decision": "PASS"}
 
     decision = PostSupervisor().decide(state)
 
