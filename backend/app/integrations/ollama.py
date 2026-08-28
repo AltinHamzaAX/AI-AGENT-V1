@@ -26,9 +26,13 @@ class _OllamaAdapter:
         model: str,
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 120.0,
+        num_predict: int = 2_048,
+        keep_alive: str = "10m",
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
+        self._num_predict = num_predict
+        self._keep_alive = keep_alive
         self._http = ProviderHTTPAdapter(client=client, timeout_seconds=timeout_seconds)
 
     async def _post(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -73,6 +77,7 @@ class OllamaLLMProvider(_OllamaAdapter):
             "model": self._model,
             "messages": messages,
             "stream": False,
+            "keep_alive": self._keep_alive,
             # Hybrid-reasoning models think before answering, and that thinking
             # is discarded: it never reaches the caller and nothing can audit
             # it. Every agent here is required to put its reasoning in the
@@ -82,6 +87,11 @@ class OllamaLLMProvider(_OllamaAdapter):
             "think": False,
             "options": {
                 "temperature": request.temperature,
+                # Keep structured specialist responses inside the allowance
+                # used by context sizing. Without an explicit ceiling Ollama
+                # may continue a verbose JSON response until the 300s agent
+                # timeout, turning one repair pass into a ten-minute stage.
+                "num_predict": self._num_predict,
                 # Ollama defaults to a 4k window and silently truncates anything
                 # longer, so a large prompt reaches the model with its tail cut
                 # off and comes back as malformed output. Size the window to the
@@ -120,6 +130,7 @@ class OllamaVisionProvider(_OllamaAdapter):
                 }
             ],
             "stream": False,
+            "keep_alive": self._keep_alive,
             # Measured on qwen3-vl: this flag alone does not suppress the private
             # reasoning trace, which then costs an order of magnitude more tokens
             # than the answer and exhausts the request timeout. Constrained
@@ -127,6 +138,7 @@ class OllamaVisionProvider(_OllamaAdapter):
             # vision models that do honour it.
             "think": False,
             "options": {
+                "num_predict": self._num_predict,
                 # The image and the reasoning a free-form answer still triggers
                 # both consume context on top of the prompt itself.
                 "num_ctx": _context_window(len(request.prompt) // 4 + IMAGE_TOKEN_ALLOWANCE),
@@ -169,7 +181,7 @@ class OllamaEmbeddingProvider(_OllamaAdapter):
             raise ValueError("Embedding request requires non-empty texts")
         body = await self._post(
             "/api/embed",
-            {"model": self._model, "input": list(request.texts)},
+            {"model": self._model, "input": list(request.texts), "keep_alive": self._keep_alive},
         )
         raw_vectors = body.get("embeddings")
         if not isinstance(raw_vectors, list) or len(raw_vectors) != len(request.texts):

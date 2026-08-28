@@ -61,6 +61,8 @@ def create_llm_provider(settings: Settings | None = None) -> LLMProvider:
             base_url=configured.ollama_base_url,
             model=_model(configured.llm_model, capability="LLM"),
             timeout_seconds=configured.provider_timeout_seconds,
+            num_predict=configured.ollama_llm_num_predict,
+            keep_alive=configured.ollama_keep_alive,
         )
     raise _unsupported("LLM", name)
 
@@ -73,7 +75,10 @@ def create_creative_llm_provider(settings: Settings | None = None) -> LLMProvide
     """
     configured = settings or get_settings()
     model = configured.creative_llm_model.strip()
-    if not model or model == configured.llm_model.strip():
+    if not model or (
+        model == configured.llm_model.strip()
+        and configured.ollama_creative_num_predict == configured.ollama_llm_num_predict
+    ):
         return None
     name = _name(configured.llm_provider, capability="LLM")
     if name == "mock":
@@ -83,6 +88,8 @@ def create_creative_llm_provider(settings: Settings | None = None) -> LLMProvide
             base_url=configured.ollama_base_url,
             model=model,
             timeout_seconds=configured.provider_timeout_seconds,
+            num_predict=configured.ollama_creative_num_predict,
+            keep_alive=configured.ollama_keep_alive,
         )
     raise _unsupported("LLM", name)
 
@@ -97,6 +104,8 @@ def create_vision_provider(settings: Settings | None = None) -> VisionProvider:
             base_url=configured.ollama_base_url,
             model=_model(configured.vision_model, capability="vision"),
             timeout_seconds=configured.provider_timeout_seconds,
+            num_predict=configured.ollama_vision_num_predict,
+            keep_alive=configured.ollama_keep_alive,
         )
     raise _unsupported("vision", name)
 
@@ -126,6 +135,7 @@ def create_embedding_provider(settings: Settings | None = None) -> EmbeddingProv
             base_url=configured.ollama_base_url,
             model=_model(configured.embedding_model, capability="embedding"),
             timeout_seconds=configured.provider_timeout_seconds,
+            keep_alive=configured.ollama_keep_alive,
         )
     raise _unsupported("embedding", name)
 

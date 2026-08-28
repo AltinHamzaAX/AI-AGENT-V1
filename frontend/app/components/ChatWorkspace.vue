@@ -105,7 +105,10 @@ async function submit() {
           <section v-if="progress && (progress.running || progress.result || progress.error)" class="progress-card">
             <h3>{{ progress.error ? 'Generation needs attention' : progress.result ? 'Post ready' : 'Building your post' }}</h3>
             <div v-for="([stage, label], index) in POST_PROGRESS" :key="stage" class="progress-step" :class="{ done: progress.result || stageIndex > index, active: !progress.result && stageIndex === index }"><i />{{ label }}</div>
-            <p v-if="progress.result">{{ progress.artifacts.length }} output artifact{{ progress.artifacts.length === 1 ? '' : 's' }} produced. Ask for any change and I will revise it.</p>
+            <div v-if="progress.result" class="generated-artifacts">
+              <img v-for="artifact in progress.artifacts.filter(item => item.preview_url)" :key="artifact.id" :src="artifact.preview_url" alt="Generated Promotiva post">
+              <p>{{ progress.artifacts.length }} output artifact{{ progress.artifacts.length === 1 ? '' : 's' }} produced. Ask for any change and I will revise it.</p>
+            </div>
             <p v-if="progress.error" class="error-message">{{ progress.error }}</p>
           </section>
         </section>

@@ -39,7 +39,6 @@ from app.modules.posts.providers import (
     LLMRequest,
     LLMResponse,
     ProviderBundle,
-    ProviderResponseError,
 )
 
 
@@ -145,7 +144,7 @@ async def test_out_of_canvas_geometry_is_repaired() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mutation", ["version", "safe_area", "offer"])
-async def test_repeated_invalid_contract_fails_closed(mutation: str) -> None:
+async def test_repeated_invalid_geometry_uses_composer_safe_fallback(mutation: str) -> None:
     invalid = deepcopy(_spec_payload())
     if mutation == "version":
         invalid["schema_version"] = "2.0"
@@ -153,8 +152,14 @@ async def test_repeated_invalid_contract_fails_closed(mutation: str) -> None:
         invalid["regions"]["logo_region"]["x"] = 1010
     else:
         invalid["regions"]["offer_region"] = None
-    with pytest.raises(ProviderResponseError):
-        await _run(await _input(), _DesignSpecLLM([invalid, invalid]))
+    payload = await _input()
+    result = await _run(payload, _DesignSpecLLM([invalid, invalid]))
+
+    assert result.schema_version == "1.0"
+    assert result.regions.logo_region.x + result.regions.logo_region.width <= 1016
+    assert (result.regions.offer_region is not None) == (
+        payload.copy_draft.offer_copy is not None
+    )
 
 
 @pytest.mark.asyncio

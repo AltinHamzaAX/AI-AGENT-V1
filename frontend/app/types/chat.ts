@@ -41,7 +41,7 @@ export interface ChatState { context: ConversationContext; post_id: string | nul
 export type GenerationJobStatus = 'queued' | 'running' | 'retry_scheduled' | 'completed' | 'failed' | 'dead'
 export interface PostGeneration { id: string; post_id: string; attempt: number; status: string; job_status: GenerationJobStatus }
 export interface GenerationJob { status: GenerationJobStatus; last_error_code: string | null }
-export interface GenerationArtifact { id: string; kind: 'intermediate' | 'preview' | 'final'; mime_type: string; width: number | null; height: number | null; metadata: Record<string, unknown> }
+export interface GenerationArtifact { id: string; kind: 'intermediate' | 'preview' | 'final'; mime_type: string; width: number | null; height: number | null; metadata: Record<string, unknown>; preview_url?: string }
 
 export const POST_PROGRESS = [['understanding', 'Understanding your request'], ['brand', 'Analyzing brand'], ['research', 'Researching'], ['strategy', 'Building strategy'], ['concept', 'Creating concept'], ['design', 'Designing'], ['generation', 'Generating'], ['review', 'Reviewing'], ['finalizing', 'Finalizing']] as const
 

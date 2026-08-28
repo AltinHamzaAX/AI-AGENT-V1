@@ -8,6 +8,7 @@ from app.modules.posts.domain.enums import UnderstandingField
 
 class ClarificationBrief(Protocol):
     business: str | None
+    brand: str | None
     language: str | None
     missing_fields: list[UnderstandingField]
 
@@ -89,12 +90,12 @@ class ClarificationEngine:
         if field is UnderstandingField.GOAL:
             return _item(
                 field,
-                MissingInformationClass.CRITICAL,
-                "ask_user",
-                "The business outcome controls every downstream strategy decision.",
+                MissingInformationClass.INFERABLE,
+                "default_to_awareness_and_consideration",
+                "A conservative awareness objective lets a short brief proceed safely.",
             )
         if field is UnderstandingField.PRODUCT_SERVICE:
-            if brief.business:
+            if brief.business or brief.brand:
                 return _item(
                     field,
                     MissingInformationClass.INFERABLE,
@@ -110,16 +111,16 @@ class ClarificationEngine:
         if field is UnderstandingField.AUDIENCE:
             return _item(
                 field,
-                MissingInformationClass.CRITICAL,
-                "ask_user",
-                "Research deepens a declared audience; it cannot invent one for the client.",
+                MissingInformationClass.RESEARCHABLE,
+                "start_broad_and_route_to_audience_intelligence",
+                "Audience intelligence can refine a conservative prospective-customer baseline.",
             )
         if field is UnderstandingField.CTA_INTENT:
             return _item(
                 field,
-                MissingInformationClass.CRITICAL,
-                "ask_user",
-                "The call-to-action strategy is grounded in the action the client asked for.",
+                MissingInformationClass.INFERABLE,
+                "default_to_learn_more",
+                "A non-transactional learn-more action is safe when no action was requested.",
             )
         if field is UnderstandingField.MARKET:
             return _item(

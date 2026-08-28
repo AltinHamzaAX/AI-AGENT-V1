@@ -18,7 +18,11 @@ const EMPTY_BY_TYPE = (): Record<ConversationType, never[]> => ({ post: [], camp
 const RUNNING_JOB = new Set(['queued', 'running', 'retry_scheduled'])
 const POLL_INTERVAL_MS = 1500
 const PENDING_PREFIX = 'pending-'
-const POLL_DEADLINE_MS = 10 * 60 * 1000
+// The backend owns the authoritative one-hour generation timeout. A complete
+// agency workflow can exceed ten minutes on a local LLM, especially when an
+// agent uses its bounded repair pass, so the client must not report a failure
+// while the leased job is still running.
+const POLL_DEADLINE_MS = 65 * 60 * 1000
 
 export function useChatWorkspace(type: ConversationType) {
   const config = useRuntimeConfig()
@@ -145,7 +149,7 @@ export function useChatWorkspace(type: ConversationType) {
         stage: POST_PROGRESS.at(-1)![0],
         result: true,
         error: '',
-        artifacts: state.artifacts,
+        artifacts: await hydrateArtifacts(workflow, state.artifacts),
       })
       return
     }
@@ -256,7 +260,10 @@ export function useChatWorkspace(type: ConversationType) {
             running: false,
             stage: POST_PROGRESS.at(-1)![0],
             result: true,
-            artifacts: await request<GenerationArtifact[]>(`${base}/artifacts`),
+            artifacts: await hydrateArtifacts(
+              workflow,
+              await request<GenerationArtifact[]>(`${base}/artifacts`),
+            ),
           })
           setActivity(conversationId, 'completed')
           return
@@ -266,7 +273,9 @@ export function useChatWorkspace(type: ConversationType) {
         }
         await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
       }
-      throw new Error('Generation is still running. You can check the status again shortly.')
+      throw new Error(
+        'Generation exceeded the backend processing window. Reopen this chat to refresh its status.',
+      )
     }
     catch (cause) {
       patchProgress(conversationId, { running: false, error: messageOf(cause, 'Generation failed.') })
@@ -308,6 +317,20 @@ export function useChatWorkspace(type: ConversationType) {
       // Workflow state is initialized asynchronously; job status is authoritative.
       return fallback
     }
+  }
+
+  async function hydrateArtifacts(
+    workflow: ChatWorkflow,
+    artifacts: GenerationArtifact[],
+  ): Promise<GenerationArtifact[]> {
+    if (!import.meta.client) return artifacts
+    return await Promise.all(artifacts.map(async (artifact) => {
+      if (!artifact.mime_type.startsWith('image/')) return artifact
+      const url = `${api}/posts/${workflow.post_id}/generations/${workflow.generation_id}/artifacts/${artifact.id}/content`
+      const response = await fetch(url, { headers: headers() })
+      if (!response.ok) return artifact
+      return { ...artifact, preview_url: URL.createObjectURL(await response.blob()) }
+    }))
   }
 
   function setProgress(conversationId: string, value: ChatProgress) {

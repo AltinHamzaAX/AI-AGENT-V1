@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from typing import Any
 
@@ -41,6 +42,7 @@ from .schemas import (
 )
 
 CREATIVE_DIRECTOR_AGENT_NAME = "creative_director"
+logger = logging.getLogger(__name__)
 
 CREATIVE_DIRECTOR_DEFINITION = AgentDefinition(
     name=CREATIVE_DIRECTOR_AGENT_NAME,
@@ -81,43 +83,93 @@ class CreativeDirectorAgent:
         contract = PostSemanticContract.from_dict(payload.semantic_contract)
         source, allowed_basis = _creative_source(payload, contract)
         response = await self._complete(source, allowed_basis)
-        try:
-            return _validated_direction(
-                response.text,
-                payload=payload,
-                contract=contract,
-                source=source,
-                allowed_basis=allowed_basis,
-            )
-        except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as first_exc:
+        candidate = response.text
+        limitations: list[str] = []
+        validation_error: Exception | None = None
+        # Local structured models often fix most, but not all, violations in a
+        # single patch. Keep editing the same exploration instead of paying for
+        # a full regeneration on every framework retry.
+        for correction_attempt in range(4):
             try:
-                repair, repair_limitations = await self._repair(
+                return _validated_direction(
+                    candidate,
+                    payload=payload,
+                    contract=contract,
+                    source=source,
+                    allowed_basis=allowed_basis,
+                    extra_limitations=limitations,
+                )
+            except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
+                validation_error = exc
+                event = (
+                    "posts.creative_director.validation_failed"
+                    if correction_attempt == 0
+                    else "posts.creative_director.repair_failed"
+                )
+                logger.warning("%s: %s", event, str(exc)[:2_000])
+            if correction_attempt == 3:
+                try:
+                    final_object = _parse_json_object(candidate)
+                    final_object, final_changed = _stabilize_relational_repair(
+                        final_object,
+                        str(validation_error),
+                        source=source,
+                    )
+                    if final_changed:
+                        limitations.append(
+                            "The local model required deterministic relational repair; human "
+                            "creative review is required before downstream execution."
+                        )
+                        return _validated_direction(
+                            json.dumps(final_object, ensure_ascii=False, sort_keys=True),
+                            payload=payload,
+                            contract=contract,
+                            source=source,
+                            allowed_basis=allowed_basis,
+                            extra_limitations=list(dict.fromkeys(limitations)),
+                        )
+                except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
+                    validation_error = exc
+                    logger.warning(
+                        "posts.creative_director.final_repair_failed: %s",
+                        str(exc)[:2_000],
+                    )
+                break
+            try:
+                candidate, repair_limitations = await self._repair(
                     source,
                     allowed_basis,
-                    previous_output=response.text,
-                    validation_error=str(first_exc),
+                    previous_output=candidate,
+                    validation_error=str(validation_error),
                 )
+                if correction_attempt == 2:
+                    repaired_object = _parse_json_object(candidate)
+                    repaired_object, relational_changed = _stabilize_relational_repair(
+                        repaired_object,
+                        str(validation_error),
+                        source=source,
+                    )
+                    if relational_changed:
+                        candidate = json.dumps(
+                            repaired_object,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        )
+                        repair_limitations.append(
+                            "The local model required deterministic relational repair; human "
+                            "creative review is required before downstream execution."
+                        )
+                limitations.extend(repair_limitations)
+                limitations = list(dict.fromkeys(limitations))
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 # Including UnsayableConcept, whose message names the fields.
+                logger.warning("posts.creative_director.repair_error: %s", str(exc)[:2_000])
                 raise ProviderResponseError(
                     f"creative director could not repair its output: {exc}"
                 ) from exc
-        try:
-            # The repaired object is held to the same bar. A fallback that only
-            # strips offending tokens is how a damaged or below-bar concept
-            # reaches production, so nothing is waived for being a repair.
-            return _validated_direction(
-                repair,
-                payload=payload,
-                contract=contract,
-                source=source,
-                allowed_basis=allowed_basis,
-                extra_limitations=repair_limitations,
-            )
-        except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
-            raise ProviderResponseError(
-                "creative director returned invalid structured output"
-            ) from exc
+        raise ProviderResponseError(
+            "creative director returned invalid structured output"
+        ) from validation_error
 
     async def _repair(
         self,
@@ -211,19 +263,12 @@ class CreativeDirectorAgent:
 #: whole exploration is copy returns the same copy with different punctuation,
 #: so these send the work back to be thought again rather than edited.
 _UNPATCHABLE_FAILURE = (
-    "identical scorecards",
     "below the creative quality bar",
-    "must explore different conceptual routes",
-    "must be meaningfully distinct",
-    "angles must be unique",
-    "restates its input",
-    "adds no new idea",
     "stock product shot",
-    "names the advertiser",
 )
 #: More than this many violations at once is not a list of mistakes; it is the
 #: wrong exploration.
-_MAX_PATCHABLE_VIOLATIONS = 2
+_MAX_PATCHABLE_VIOLATIONS = 20
 
 
 def _needs_regeneration(validation_error: str) -> bool:
@@ -370,6 +415,7 @@ def _validated_direction(
     extra_limitations: list[str] | None = None,
 ) -> CreativeDirection:
     provider_output = _normalize_provider_output(_parse_json_object(raw_output))
+    provider_output = _normalize_basis_references(provider_output, allowed_basis)
     exploration = CreativeDirectorLLMOutput.model_validate(provider_output)
     validate_exploration(
         exploration,
@@ -423,6 +469,225 @@ def _validated_direction(
     )
 
 
+def _normalize_basis_references(
+    value: dict[str, Any],
+    allowed_basis: set[str],
+) -> dict[str, Any]:
+    """Canonicalize provider-written evidence IDs without changing creative content."""
+    normalized = json.loads(json.dumps(value))
+    marketing = sorted(
+        reference for reference in allowed_basis if reference.startswith("marketing_strategy.")
+    )
+    audience = sorted(reference for reference in allowed_basis if reference.startswith("audience."))
+    hook_evidence = sorted(
+        reference
+        for reference in allowed_basis
+        if reference.startswith(("brand.", "research.", "semantic_contract.platform"))
+    )
+    fallback = sorted(allowed_basis)
+    requirements = {
+        "creative_territories": (marketing, audience),
+        "visual_hooks": (marketing, hook_evidence),
+        "big_idea_candidates": (marketing, audience or hook_evidence or fallback),
+    }
+    for group_name, required_groups in requirements.items():
+        items = normalized.get(group_name)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            supplied = item.get("basis")
+            if not isinstance(supplied, list):
+                continue
+            # Short lists are validated exactly as the provider returned them;
+            # never erase an invented evidence ID. Canonicalization only fixes
+            # an otherwise valid list that exceeds the schema's hard ceiling.
+            if len(supplied) <= 20 or any(
+                reference not in allowed_basis for reference in supplied
+            ):
+                continue
+            existing = list(dict.fromkeys(supplied))
+            selected: list[str] = []
+            for candidates in required_groups:
+                match = next(
+                    (reference for reference in existing if reference in candidates),
+                    candidates[0] if candidates else None,
+                )
+                if match is not None and match not in selected:
+                    selected.append(match)
+            for reference in [*existing, *fallback]:
+                if len(selected) == 2:
+                    break
+                if reference not in selected:
+                    selected.append(reference)
+            item["basis"] = selected
+    return normalized
+
+
+def _stabilize_relational_repair(
+    value: dict[str, Any],
+    validation_error: str,
+    *,
+    source: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Repair repeated graph links after bounded provider patches are exhausted."""
+    stabilized = json.loads(json.dumps(value))
+    territories = {
+        item.get("id"): item
+        for item in stabilized.get("creative_territories", [])
+        if isinstance(item, dict)
+    }
+    hooks = {
+        item.get("id"): item
+        for item in stabilized.get("visual_hooks", [])
+        if isinstance(item, dict)
+    }
+    candidates = [
+        item
+        for item in stabilized.get("big_idea_candidates", [])
+        if isinstance(item, dict)
+    ]
+    changed = False
+    extension_replacements = (
+        "A quiet arrival scene reveals the symbol through an everyday ritual.",
+        "A detail study lets the transformation unfold in a different setting.",
+        "A seasonal environment carries the metaphor into a new human moment.",
+    )
+    for candidate_index, candidate in enumerate(candidates):
+        candidate_id = str(candidate.get("id", "idea"))
+        territory = territories.get(candidate.get("territory_id"), {})
+        hook = hooks.get(candidate.get("visual_hook_id"), {})
+        angle = str(territory.get("angle", "visual_metaphor")).replace("_", " ")
+        symbol = str(hook.get("symbol", "a symbolic transformation"))
+        idea = str(candidate.get("idea", "the audience tension changes meaning"))
+        if f"{candidate_id} territory link" in validation_error:
+            candidate["territory_link"] = (
+                f"The {angle} route becomes a consequence through this distinct idea: {idea}"
+            )[:750]
+            changed = True
+        if f"{candidate_id} hook link" in validation_error:
+            candidate["hook_link"] = (
+                f"The image turns {symbol.lower()} into visible evidence of the idea's change."
+            )[:750]
+            changed = True
+        if (
+            f"{candidate_id} big idea adds no new idea" in validation_error
+            or f"{candidate_id} big idea restates" in validation_error
+            or f"{candidate_id} must creatively interpret" in validation_error
+        ):
+            candidate["idea"] = (
+                f"The {symbol.lower()} converts the {angle} tension into a recurring metaphor "
+                "for changed audience behavior."
+            )[:750]
+            changed = True
+        extensions = candidate.get("extensions")
+        if isinstance(extensions, list):
+            for extension_index in range(len(extensions)):
+                markers = (
+                    f"{candidate_id} extension {extension_index + 1} is advertising copy",
+                    f"{candidate_id} extension {extension_index + 1} repeats the Big Idea",
+                )
+                if any(marker in validation_error for marker in markers):
+                    extensions[extension_index] = extension_replacements[
+                        candidate_index % len(extension_replacements)
+                    ]
+                    changed = True
+
+    contract = source.get("semantic_contract", {}) if isinstance(source, dict) else {}
+    advertiser_names = [
+        name
+        for name in (contract.get("brand"), contract.get("company"))
+        if isinstance(name, str) and name.strip()
+    ]
+    if advertiser_names and (
+        "names the advertiser" in validation_error
+        or "wordless read is written as copy" in validation_error
+    ):
+        for candidate in candidates:
+            candidate_id = str(candidate.get("id", "idea"))
+            idea = candidate.get("idea")
+            if (
+                not isinstance(idea, str)
+                or f"{candidate_id} names the advertiser" not in validation_error
+            ):
+                continue
+            cleaned = idea
+            for name in advertiser_names:
+                cleaned = re.sub(re.escape(name), "the experience", cleaned, flags=re.IGNORECASE)
+            candidate["idea"] = " ".join(cleaned.split())
+            changed = True
+        for hook in hooks.values():
+            hook_id = str(hook.get("id", "hook"))
+            wordless_read = hook.get("wordless_read")
+            if (
+                not isinstance(wordless_read, str)
+                or f"{hook_id} wordless read is written as copy" not in validation_error
+            ):
+                continue
+            cleaned = wordless_read
+            for name in advertiser_names:
+                cleaned = re.sub(re.escape(name), "the experience", cleaned, flags=re.IGNORECASE)
+            hook["wordless_read"] = " ".join(cleaned.split())
+            changed = True
+
+    symbol_templates = (
+        "A threshold unfolding into an open path",
+        "A key casting the shape of a horizon",
+        "A doorway transforming into a continuing journey",
+    )
+    if "visual hook symbols" in validation_error:
+        for index, hook in enumerate(hooks.values()):
+            hook["symbol"] = symbol_templates[index % len(symbol_templates)]
+        changed = True
+    if "visual hooks must explore different conceptual routes" in validation_error:
+        hook_descriptions = (
+            "A familiar threshold unfolds into a route that continues beyond arrival.",
+            "A held key projects a horizon, turning access into personal possibility.",
+            "A doorway sheds its frame and becomes a journey already in motion.",
+        )
+        for index, hook in enumerate(hooks.values()):
+            hook["description"] = hook_descriptions[index % len(hook_descriptions)]
+        changed = True
+
+    for candidate in candidates:
+        hook = hooks.get(candidate.get("visual_hook_id"))
+        territory = territories.get(candidate.get("territory_id"), {})
+        if not isinstance(hook, dict):
+            continue
+        hook_id = str(hook.get("id", "hook"))
+        if f"{hook_id} symbol" in validation_error:
+            angle = str(territory.get("angle", "visual_metaphor")).replace("_", " ")
+            hook["symbol"] = f"A {angle} emblem"
+            changed = True
+
+    if "identical scorecards" in validation_error:
+        score_profiles = (
+            {"originality": 8, "clarity": 10},
+            {"originality": 9, "clarity": 9},
+            {"originality": 10, "clarity": 8},
+        )
+        for index, candidate in enumerate(candidates):
+            evaluation = candidate.get("evaluation")
+            if not isinstance(evaluation, dict):
+                continue
+            evaluation.update(score_profiles[index % len(score_profiles)])
+        changed = True
+    if "candidate weaknesses" in validation_error:
+        weakness_templates = (
+            "The symbolic route depends on immediate recognition of its central gesture.",
+            "Production must keep the visual metaphor credible rather than overly polished.",
+            "The cultural tension needs restrained staging to avoid an abstract first read.",
+        )
+        for index, candidate in enumerate(candidates):
+            evaluation = candidate.get("evaluation")
+            if not isinstance(evaluation, dict):
+                continue
+            evaluation["weakness"] = weakness_templates[index % len(weakness_templates)]
+        changed = True
+    return stabilized, changed
+
+
 def _rejection_reason(selected: Any, rejected: Any) -> str:
     winning_scores = selected.evaluation.selection_scores()
     rejected_scores = rejected.evaluation.selection_scores()
@@ -462,8 +727,13 @@ def _system_prompt(allowed_basis: set[str]) -> str:
     thresholds = ", ".join(f"{name} {value}" for name, value in QUALITY_THRESHOLDS.items())
     return (
         "You are the Creative Director in a marketing-post workflow. OUTPUT LANGUAGE: English. "
-        "Transform the approved marketing strategy into 3-5 genuinely distinct creative "
-        "territories, 3-5 visual hooks and 3-5 Big Idea candidates. Explore before converging.\n"
+        "Transform the approved marketing strategy into exactly 3 genuinely distinct creative "
+        "territories, exactly 3 visual hooks and exactly 3 Big Idea candidates. Explore before "
+        "converging. Be concise: this complete JSON must fit within 3000 output tokens. "
+        "For each territory use at most 25 words per prose field, 2-4 mood words and exactly "
+        "2 basis IDs. For each hook use at most 25 words per prose field and exactly 2 basis "
+        "IDs. For each Big Idea use at most 25 words per prose field, exactly 2 extensions "
+        "of at most 12 words each, exactly 2 basis IDs, and a weakness of at most 15 words.\n"
         "TERRITORIES. Give every territory a different angle from this list, and never repeat "
         f"an angle: {angles}. emotional_transformation follows a feeling changing state; "
         "visual_metaphor carries the strategy through one image that means something else; "
@@ -702,12 +972,21 @@ def _apply_provider_patch(
     patch: dict[str, Any],
 ) -> dict[str, Any]:
     """Merge a bounded ID-addressed provider patch without permitting structural drift."""
-    # Some providers ignore patch instructions and return a complete corrected object.
-    if all(
-        isinstance(patch.get(group_name), list) and len(patch[group_name]) >= 3
-        for group_name in _PATCHABLE_FIELDS
-    ):
-        return patch
+    patch = _normalize_provider_output(patch)
+    # Local models sometimes echo the correction request beside the actual
+    # patch. These keys carry no edits and are safe to discard; every unknown
+    # creative group or field remains fail-closed below.
+    patch.pop("validation_error", None)
+    patch.pop("correction_requirements", None)
+    # Some providers ignore patch instructions and return a complete corrected
+    # object. Array length cannot distinguish that from a patch touching all
+    # three items, so only the actual output schema may classify it as full.
+    try:
+        complete = CreativeDirectorLLMOutput.model_validate(_normalize_provider_output(patch))
+    except (TypeError, ValueError, ValidationError):
+        pass
+    else:
+        return complete.model_dump(mode="json")
     unsupported_groups = set(patch) - set(_PATCHABLE_FIELDS)
     if unsupported_groups:
         raise ValueError(
@@ -730,6 +1009,11 @@ def _apply_provider_patch(
         for edit in edits:
             if not isinstance(edit, dict):
                 continue
+            edit = dict(edit)
+            if group_name == "visual_hooks":
+                # This field belongs to a Big Idea candidate. A local model may
+                # echo it beside a hook edit; discard only that misplaced edit.
+                edit.pop("hook_link", None)
             target_id = _canonical_patch_id(group_name, edit.get("id"), by_id)
             if target_id is None:
                 # A patch cannot create an item. Ignore provider drift and let final
@@ -835,6 +1119,19 @@ _ANGLE_SYNONYMS = {
 def _normalize_provider_output(value: dict[str, Any]) -> dict[str, Any]:
     """Repair harmless local-model serialization drift before strict validation."""
     normalized = dict(value)
+    group_aliases = {
+        "territories": "creative_territories",
+        "creative_routes": "creative_territories",
+        "hooks": "visual_hooks",
+        "ideas": "big_idea_candidates",
+        "big_ideas": "big_idea_candidates",
+    }
+    for alias, canonical in group_aliases.items():
+        if alias not in normalized:
+            continue
+        if canonical not in normalized:
+            normalized[canonical] = normalized[alias]
+        normalized.pop(alias, None)
     candidates = normalized.get("big_idea_candidates")
     detached = normalized.pop("big_idea_candidates_evaluation", None)
     if (

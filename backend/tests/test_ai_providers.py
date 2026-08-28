@@ -71,22 +71,54 @@ def test_inventive_stages_share_the_default_model_until_one_is_configured() -> N
 
 def test_naming_the_same_model_twice_does_not_build_a_second_provider() -> None:
     providers = create_provider_bundle(
-        _settings(llm_provider="ollama", llm_model="same", creative_llm_model="  same  ")
+        _settings(
+            llm_provider="ollama",
+            llm_model="same",
+            creative_llm_model="  same  ",
+            ollama_llm_num_predict=1_024,
+            ollama_creative_num_predict=1_024,
+        )
     )
 
     assert providers.creative_llm_override is None
     assert providers.creative_llm is providers.llm
 
 
+def test_same_creative_model_keeps_a_separate_output_budget() -> None:
+    providers = create_provider_bundle(
+        _settings(
+            llm_provider="ollama",
+            llm_model="shared",
+            creative_llm_model="shared",
+            ollama_llm_num_predict=640,
+            ollama_creative_num_predict=1_920,
+        )
+    )
+
+    assert providers.creative_llm is not providers.llm
+    assert providers.llm._num_predict == 640
+    assert providers.creative_llm._num_predict == 1_920
+
+
 def test_a_configured_creative_model_is_built_only_for_the_inventive_stages() -> None:
     providers = create_provider_bundle(
-        _settings(llm_provider="ollama", llm_model="small", creative_llm_model="large")
+        _settings(
+            llm_provider="ollama",
+            llm_model="small",
+            creative_llm_model="large",
+            ollama_llm_num_predict=640,
+            ollama_creative_num_predict=1_920,
+            ollama_keep_alive="30m",
+        )
     )
 
     # The adapter keeps its model private; the choice it was built with is the
     # whole point of this setting, so the test reads it directly.
     assert providers.llm._model == "small"
     assert providers.creative_llm._model == "large"
+    assert providers.llm._num_predict == 640
+    assert providers.creative_llm._num_predict == 1_920
+    assert providers.llm._keep_alive == "30m"
     assert providers.creative_llm is not providers.llm
 
 
@@ -203,8 +235,60 @@ async def test_ollama_adapters_use_provider_neutral_contracts() -> None:
     assert vision_response.data == {"objects": ["product"]}
     assert requests[1]["messages"][0]["images"] == [base64.b64encode(b"binary").decode("ascii")]
     assert requests[1]["think"] is False
+    assert requests[0]["options"]["num_predict"] == 2_048
+    assert requests[1]["options"]["num_predict"] == 2_048
+    assert requests[0]["keep_alive"] == "10m"
+    assert requests[1]["keep_alive"] == "10m"
     assert requests[1]["options"]["num_ctx"] == 16_384
     assert embedding_response.vectors == ((0.1, 0.2), (0.3, 0.4))
+
+
+@pytest.mark.asyncio
+async def test_ollama_generation_limits_are_configurable() -> None:
+    payloads: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        if request.url.path == "/api/embed":
+            return httpx.Response(200, json={"model": "embedding", "embeddings": [[0.1]]})
+        content = '{"description": "ok"}' if payload["messages"][0].get("images") else "{}"
+        return httpx.Response(
+            200,
+            json={"model": payload["model"], "message": {"role": "assistant", "content": content}},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        llm = OllamaLLMProvider(
+            base_url="http://ollama.test",
+            model="qwen",
+            client=client,
+            num_predict=512,
+            keep_alive="45m",
+        )
+        vision = OllamaVisionProvider(
+            base_url="http://ollama.test",
+            model="qwen-vl",
+            client=client,
+            num_predict=384,
+            keep_alive="45m",
+        )
+        embedding = OllamaEmbeddingProvider(
+            base_url="http://ollama.test",
+            model="embedding",
+            client=client,
+            keep_alive="45m",
+        )
+
+        await llm.complete(LLMRequest(messages=(LLMMessage(role="user", content="brief"),)))
+        await vision.analyze(VisionRequest(image=b"binary", mime_type="image/png", prompt="look"))
+        await embedding.embed(EmbeddingRequest(texts=("one",)))
+
+    assert payloads[0]["options"]["num_predict"] == 512
+    assert payloads[1]["options"]["num_predict"] == 384
+    assert payloads[0]["keep_alive"] == "45m"
+    assert payloads[1]["keep_alive"] == "45m"
+    assert payloads[2]["keep_alive"] == "45m"
 
 
 @pytest.mark.asyncio

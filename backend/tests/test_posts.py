@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.dependencies.assets import get_asset_storage
 from app.infrastructure.database.base import Base
 from app.infrastructure.database.repositories.execution_traces import (
     SQLAlchemyExecutionTraceRecorder,
@@ -30,6 +31,14 @@ from app.modules.posts.domain.observability import (
     ExecutionTraceCreate,
 )
 from app.modules.posts.services import PostsService
+
+
+class ArtifactStorage:
+    def __init__(self, objects: dict[str, bytes]) -> None:
+        self.objects = objects
+
+    async def get(self, *, key: str) -> bytes:
+        return self.objects[key]
 
 
 @pytest_asyncio.fixture
@@ -362,6 +371,50 @@ async def test_generation_statuses_and_artifact_models_are_persisted(
             scope=scope,
         )
         assert [item.id for item in artifacts] == [artifact.id]
+
+
+@pytest.mark.asyncio
+async def test_generation_artifact_content_is_available_to_the_scoped_client(
+    post_client: AsyncClient,
+    post_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    headers = _headers()
+    post = await _post(post_client, headers)
+    generation_response = await post_client.post(
+        f"/api/posts/{post['id']}/generations", headers=headers
+    )
+    assert generation_response.status_code == 201
+    generation = generation_response.json()
+    storage_key = f"generations/{generation['id']}/final.png"
+    image = b"final-image-bytes"
+    app.dependency_overrides[get_asset_storage] = lambda: ArtifactStorage({storage_key: image})
+    scope = PostScope(
+        user_id=UUID(headers["X-User-ID"]), project_id=UUID(headers["X-Project-ID"])
+    )
+    async with post_session_factory.begin() as session:
+        artifact = await PostsService(SQLAlchemyPostRepository(session)).add_artifact(
+            generation_id=UUID(generation["id"]),
+            post_id=UUID(post["id"]),
+            scope=scope,
+            kind=GenerationArtifactKind.FINAL,
+            storage_key=storage_key,
+            mime_type="image/png",
+            size_bytes=len(image),
+            checksum="a" * 64,
+            width=1080,
+            height=1080,
+            metadata={},
+        )
+
+    response = await post_client.get(
+        f"/api/posts/{post['id']}/generations/{generation['id']}"
+        f"/artifacts/{artifact.id}/content",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content == image
 
 
 @pytest.mark.asyncio

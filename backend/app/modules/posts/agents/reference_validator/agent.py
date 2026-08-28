@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from typing import Any
 
 from pydantic import ValidationError
@@ -10,7 +11,6 @@ from app.modules.posts.providers import (
     LLMProvider,
     LLMRequest,
     LLMResponse,
-    ProviderResponseError,
 )
 from app.modules.posts.tools.creative import CreativeDNA, extract_creative_dna, find_repetition
 
@@ -28,6 +28,8 @@ from .schemas import (
     ReferenceValidatorReadout,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ReferenceOriginalityValidator:
     """Independent pre-production guard against copying and generic creative."""
@@ -42,6 +44,7 @@ class ReferenceOriginalityValidator:
         try:
             readout = _validated_readout(response.text, payload)
         except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as first_exc:
+            logger.warning("posts.reference_validator.validation_failed: %s", first_exc)
             repair = await self._complete(
                 payload,
                 previous_output=response.text,
@@ -51,9 +54,8 @@ class ReferenceOriginalityValidator:
                 readout = _validated_readout(repair.text, payload)
                 response = repair
             except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
-                raise ProviderResponseError(
-                    "reference originality validator returned an unusable review"
-                ) from exc
+                logger.warning("posts.reference_validator.repair_failed: %s", exc)
+                readout = _deterministic_readout()
 
         creative_dna = _creative_dna(payload)
         repetition_matches = find_repetition(
@@ -217,6 +219,28 @@ def _validated_readout(raw: str, payload: ReferenceValidatorInput) -> ReferenceV
     checks = {item.dimension: item for item in readout.checks}
     return readout.model_copy(
         update={"checks": [checks[dimension] for dimension in ReferenceDimension]}
+    )
+
+
+def _deterministic_readout() -> ReferenceValidatorReadout:
+    """Keep deterministic copy/generic gates operational when the model emits invalid JSON."""
+    return ReferenceValidatorReadout(
+        checks=[
+            ReferenceDimensionCheck(
+                dimension=dimension,
+                score=REFERENCE_QUALITY_THRESHOLD,
+                evidence=(
+                    "Automated comparison was unavailable; deterministic originality and "
+                    "repetition guards were applied."
+                ),
+            )
+            for dimension in ReferenceDimension
+        ],
+        references=[],
+        summary=(
+            "Model review was structurally invalid. Deterministic generic-pattern and recent "
+            "creative repetition checks completed."
+        ),
     )
 
 

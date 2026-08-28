@@ -1,4 +1,6 @@
 import json
+import logging
+import re
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -23,6 +25,7 @@ from .quality import validate_and_measure_copy
 from .schemas import CopyDraft, CopywriterInput, CopywriterLLMOutput
 
 COPYWRITER_AGENT_NAME = "copywriter"
+logger = logging.getLogger(__name__)
 
 COPYWRITER_DEFINITION = AgentDefinition(
     name=COPYWRITER_AGENT_NAME,
@@ -53,6 +56,7 @@ class CopywriterAgent:
         try:
             return _validated_copy(response.text, payload=payload, contract=contract)
         except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as first_exc:
+            logger.warning("posts.copywriter.validation_failed: %s", first_exc)
             repair = await self._complete(
                 source,
                 contract,
@@ -62,7 +66,19 @@ class CopywriterAgent:
         try:
             return _validated_copy(repair.text, payload=payload, contract=contract)
         except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
-            raise ProviderResponseError("copywriter returned invalid or unsupported copy") from exc
+            logger.warning("posts.copywriter.repair_failed: %s", exc)
+            try:
+                normalized = _normalize_copy_output(
+                    repair.text,
+                    fallback=response.text,
+                    contract=contract,
+                )
+                return _validated_copy(normalized, payload=payload, contract=contract)
+            except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as final_exc:
+                logger.error("posts.copywriter.normalization_failed: %s", final_exc)
+                raise ProviderResponseError(
+                    "copywriter returned invalid or unsupported copy"
+                ) from final_exc
 
     async def _complete(
         self,
@@ -172,6 +188,132 @@ def _parse_json_object(value: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise TypeError("provider output must be a JSON object")
     return parsed
+
+
+_COPY_FIELDS = {
+    "headline",
+    "subheadline",
+    "supporting_copy",
+    "offer_copy",
+    "cta",
+    "caption",
+    "hashtags",
+}
+_FIELD_ALIASES = {
+    "supportingCopy": "supporting_copy",
+    "supporting_text": "supporting_copy",
+    "offerCopy": "offer_copy",
+    "call_to_action": "cta",
+    "callToAction": "cta",
+}
+_UNSAFE_ABSOLUTE = re.compile(
+    r"\b(?:best|cheapest|fastest|guaranteed?|risk[- ]free|free|number one|#1|"
+    r"always|never|instant(?:ly)?|zero wait(?:ing)?)\b",
+    re.IGNORECASE,
+)
+_NUMBER = re.compile(r"(?<![\w])(?:[$€£]\s*)?\d+(?:[.,]\d+)?(?:\s*%|/[\w]+)?")
+
+
+def _normalize_copy_output(
+    raw_output: str,
+    *,
+    fallback: str,
+    contract: PostSemanticContract,
+) -> str:
+    """Repair presentation defects deterministically while failing closed on claims."""
+    primary = _best_effort_object(raw_output)
+    backup = _best_effort_object(fallback)
+    data = {_FIELD_ALIASES.get(key, key): value for key, value in primary.items()}
+    backup = {_FIELD_ALIASES.get(key, key): value for key, value in backup.items()}
+    data = {key: value for key, value in data.items() if key in _COPY_FIELDS}
+
+    defaults = {
+        "headline": "Discover what comes next",
+        "subheadline": "A focused experience shaped around your needs",
+        "supporting_copy": "Explore an experience designed with care.",
+        "cta": "Learn more",
+        "caption": "Explore an experience designed with care.",
+        "hashtags": [],
+    }
+    for field, default in defaults.items():
+        value = data.get(field, backup.get(field, default))
+        data[field] = value if isinstance(value, (str, list)) else default
+
+    data["headline"] = _safe_text(data["headline"], contract, words=12, chars=80)
+    data["subheadline"] = _safe_text(data["subheadline"], contract, chars=140)
+    data["supporting_copy"] = _safe_sentence(
+        _safe_text(data["supporting_copy"], contract, words=30, chars=239)
+    )
+    data["cta"] = _safe_text(data["cta"], contract, words=6, chars=40)
+    caption_limit = 500 if contract.platform.casefold() in {"instagram", "facebook"} else 300
+    data["caption"] = _safe_sentence(
+        _safe_text(data["caption"], contract, words=30, chars=caption_limit - 1)
+    )
+    data["offer_copy"] = contract.offer
+    hashtags = data.get("hashtags", [])
+    data["hashtags"] = hashtags[:15] if isinstance(hashtags, list) else []
+
+    # Keep the overlay sparse even when every individual field is valid.
+    overlay_fields = ("headline", "subheadline", "supporting_copy", "cta")
+    while sum(len(str(data[field])) for field in overlay_fields) + len(contract.offer or "") > 420:
+        longest = max(overlay_fields, key=lambda field: len(str(data[field])))
+        minimum = 20 if longest not in {"headline", "cta"} else 8
+        value = str(data[longest])
+        if len(value) <= minimum:
+            break
+        data[longest] = value[: max(minimum, len(value) - 20)].rsplit(" ", 1)[0]
+        if longest in {"supporting_copy"}:
+            data[longest] = _safe_sentence(data[longest])
+    return json.dumps(data, ensure_ascii=False)
+
+
+def _best_effort_object(value: str) -> dict[str, Any]:
+    try:
+        return _parse_json_object(value)
+    except (json.JSONDecodeError, TypeError):
+        start, end = value.find("{"), value.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                parsed = json.loads(value[start : end + 1])
+                return parsed if isinstance(parsed, dict) else {}
+            except json.JSONDecodeError:
+                pass
+    return {}
+
+
+def _safe_text(
+    value: Any,
+    contract: PostSemanticContract,
+    *,
+    words: int | None = None,
+    chars: int,
+) -> str:
+    text = " ".join(str(value).split()).strip(" `\"'")
+    approved = " ".join(
+        [contract.offer or "", *(fact for _, fact in contract.required_facts)]
+    ).casefold()
+    for forbidden in contract.forbidden_claims:
+        text = re.sub(re.escape(forbidden), "", text, flags=re.IGNORECASE)
+    for match in list(_NUMBER.finditer(text)) + list(_UNSAFE_ABSOLUTE.finditer(text)):
+        token = match.group(0)
+        if token.casefold() not in approved:
+            text = text.replace(token, "")
+    text = " ".join(text.split()).strip(" ,;:-")
+    text = re.sub(r"!+", ".", text)
+    letters = [character for character in text if character.isalpha()]
+    if letters and sum(character.isupper() for character in letters) / len(letters) > 0.6:
+        text = text.capitalize()
+    if words is not None:
+        text = " ".join(text.split()[:words])
+    if len(text) > chars:
+        text = text[:chars].rsplit(" ", 1)[0]
+    return text or "Discover more"
+
+
+def _safe_sentence(value: str) -> str:
+    if value.endswith((".", "!", "?")):
+        return value
+    return f"{value.rstrip(' ,;:')}."
 
 
 __all__ = [

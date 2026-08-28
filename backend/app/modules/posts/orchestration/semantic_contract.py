@@ -1,15 +1,14 @@
 """Freeze the understood brief into the write-once semantic contract.
 
-This stage invents nothing. Every declared fact comes from the client brief;
-the two fields the clarification policy resolves without asking - platform and
-language - fall back to a declared delivery default, and nothing else may be
-absent by the time the stage runs.
+Client-declared facts always win. Fields that the clarification policy resolves
+without asking use conservative working defaults so a short brief can proceed;
+these defaults make no offer, price, performance, or product claim.
 """
 
 from typing import Any
 from uuid import UUID
 
-from app.modules.posts.domain.enums import PostWorkflowSection, UnderstandingField
+from app.modules.posts.domain.enums import PostWorkflowSection
 from app.modules.posts.domain.jobs import NonRetryableJobError
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
 from app.modules.posts.orchestration.supervisor import (
@@ -22,16 +21,7 @@ from app.modules.posts.orchestration.supervisor import (
 #: which is why they can be defaulted while an unstated audience cannot.
 DEFAULT_PLATFORM = "Instagram"
 DEFAULT_LANGUAGE = "English"
-
-#: Facts no downstream stage can derive or research. Marketing strategy grounds
-#: its call to action in the client's stated intent, and audience research
-#: deepens a declared audience rather than inventing one, so a brief that
-#: reaches this stage without them cannot produce a grounded post.
-REQUIRED_BRIEF_FIELDS = (
-    UnderstandingField.GOAL,
-    UnderstandingField.AUDIENCE,
-    UnderstandingField.CTA_INTENT,
-)
+DEFAULT_CTA_INTENT = "Learn more"
 
 #: Roles whose asset must survive into the render untouched.
 _IDENTITY_ROLES = frozenset({"logo", "product", "vehicle", "packaging"})
@@ -42,13 +32,6 @@ class SemanticContractStageHandler:
 
     async def execute(self, context: SupervisorStageContext) -> SupervisorStageResult:
         brief = _brief(context.workflow_state)
-        missing = [
-            field.value for field in REQUIRED_BRIEF_FIELDS if not _text(brief.get(field.value))
-        ]
-        if missing:
-            raise NonRetryableJobError(
-                f"semantic contract requires client facts that are missing: {', '.join(missing)}"
-            )
         subject = _subject(brief)
         if subject is None:
             raise NonRetryableJobError("semantic contract has no subject to promote")
@@ -57,12 +40,12 @@ class SemanticContractStageHandler:
             brand=_text(brief.get("brand")),
             product=_text(brief.get("product_service")),
             primary_entity=subject,
-            goal=_required(brief, "goal"),
-            audience=_required(brief, "audience"),
+            goal=_text(brief.get("goal")) or f"Build awareness and consideration for {subject}",
+            audience=_text(brief.get("audience")) or f"People interested in {subject}",
             market=_text(brief.get("market")),
             location=_text(brief.get("location")),
             offer=_text(brief.get("offer")),
-            cta_intent=_required(brief, "cta_intent"),
+            cta_intent=_text(brief.get("cta_intent")) or DEFAULT_CTA_INTENT,
             platform=_text(brief.get("platform")) or DEFAULT_PLATFORM,
             language=_text(brief.get("language")) or DEFAULT_LANGUAGE,
             required_facts=_required_facts(brief),
@@ -89,13 +72,6 @@ def _subject(brief: dict[str, Any]) -> str | None:
         if value is not None:
             return value
     return None
-
-
-def _required(brief: dict[str, Any], field: str) -> str:
-    value = _text(brief.get(field))
-    if value is None:
-        raise NonRetryableJobError(f"semantic contract requires '{field}'")
-    return value
 
 
 def _required_facts(brief: dict[str, Any]) -> dict[str, str]:
@@ -142,6 +118,6 @@ def _text(value: Any) -> str | None:
 __all__ = [
     "DEFAULT_LANGUAGE",
     "DEFAULT_PLATFORM",
-    "REQUIRED_BRIEF_FIELDS",
+    "DEFAULT_CTA_INTENT",
     "SemanticContractStageHandler",
 ]

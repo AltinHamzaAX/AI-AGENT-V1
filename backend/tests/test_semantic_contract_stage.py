@@ -10,6 +10,7 @@ from app.modules.posts.domain.state import empty_workflow_state
 from app.modules.posts.domain.supervisor import SupervisorAction
 from app.modules.posts.orchestration import SupervisorStageContext
 from app.modules.posts.orchestration.semantic_contract import (
+    DEFAULT_CTA_INTENT,
     DEFAULT_LANGUAGE,
     DEFAULT_PLATFORM,
     SemanticContractStageHandler,
@@ -131,18 +132,13 @@ async def test_delivery_fields_fall_back_to_the_declared_working_values() -> Non
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("field", ["goal", "audience", "cta_intent"])
-async def test_a_fact_no_stage_can_derive_stops_the_workflow(field: str) -> None:
-    with pytest.raises(NonRetryableJobError) as error:
-        await _run(_brief(**{field: None}))
-
-    assert field in str(error.value)
-
-
 @pytest.mark.asyncio
-async def test_a_blank_value_counts_as_missing() -> None:
-    with pytest.raises(NonRetryableJobError):
-        await _run(_brief(audience="   "))
+async def test_short_brief_uses_conservative_marketing_defaults() -> None:
+    contract = await _run(_brief(goal=None, audience="   ", cta_intent=None))
+
+    assert contract["goal"] == "Build awareness and consideration for Skoda Fabia"
+    assert contract["audience"] == "People interested in Skoda Fabia"
+    assert contract["cta_intent"] == DEFAULT_CTA_INTENT
 
 
 @pytest.mark.asyncio

@@ -71,6 +71,14 @@ def _agent_payload(workflow_state: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(contract_value, dict):
         raise ValueError("semantic_contract must be an object")
     contract = PostSemanticContract.from_dict(contract_value)
+    assets_value = workflow_state.get(PostWorkflowSection.ASSETS.value)
+    # ASSETS is canonically persisted as the policy array because several production and
+    # verification stages consume it directly. Rebuild the agent result envelope here.
+    if isinstance(assets_value, list):
+        assets_value = {
+            "assets": assets_value,
+            "contract_fingerprint": contract.fingerprint,
+        }
     return ArtDirectorInput(
         concept=CreativeDirection.model_validate(
             workflow_state.get(PostWorkflowSection.CREATIVE_CONCEPT.value)
@@ -81,9 +89,7 @@ def _agent_payload(workflow_state: dict[str, Any]) -> dict[str, Any]:
         brand=BrandAnalysis.model_validate(
             workflow_state.get(PostWorkflowSection.BRAND.value)
         ),
-        assets=AssetIntelligenceResult.model_validate(
-            workflow_state.get(PostWorkflowSection.ASSETS.value)
-        ),
+        assets=AssetIntelligenceResult.model_validate(assets_value),
         platform=contract.platform,
         semantic_contract=contract.to_dict(),
     ).model_dump(mode="json")

@@ -38,15 +38,11 @@ def test_engine_asks_only_for_critical_missing_information() -> None:
     assert plan.requires_user_input is True
     assert [question.field for question in plan.questions] == [
         UnderstandingField.PRODUCT_SERVICE,
-        UnderstandingField.GOAL,
-        UnderstandingField.AUDIENCE,
     ]
     assert classifications[UnderstandingField.BUSINESS] is MissingInformationClass.OPTIONAL
     assert classifications[UnderstandingField.PRODUCT_SERVICE] is MissingInformationClass.CRITICAL
-    assert classifications[UnderstandingField.GOAL] is MissingInformationClass.CRITICAL
-    # The semantic contract declares the audience and marketing strategy grounds
-    # its call to action in it, so neither can be researched into existence.
-    assert classifications[UnderstandingField.AUDIENCE] is MissingInformationClass.CRITICAL
+    assert classifications[UnderstandingField.GOAL] is MissingInformationClass.INFERABLE
+    assert classifications[UnderstandingField.AUDIENCE] is MissingInformationClass.RESEARCHABLE
     assert classifications[UnderstandingField.PLATFORM] is MissingInformationClass.INFERABLE
     assert classifications[UnderstandingField.OFFER] is MissingInformationClass.OPTIONAL
     assert all("?" in question.question for question in plan.questions)
@@ -90,14 +86,14 @@ def test_plan_rejects_a_critical_item_without_a_question() -> None:
         )
 
 
-def test_supervisor_blocks_only_when_critical_clarification_is_pending() -> None:
+def test_supervisor_blocks_only_when_the_promoted_subject_is_unknown() -> None:
     state = empty_workflow_state()
     state[PostWorkflowSection.BRIEF.value] = {
         "clarification": ClarificationEngine()
         .evaluate(
             ClientUnderstandingBrief(
                 language="English",
-                missing_fields=[UnderstandingField.GOAL],
+                missing_fields=[UnderstandingField.PRODUCT_SERVICE],
             )
         )
         .model_dump(mode="json")
@@ -110,7 +106,7 @@ def test_supervisor_blocks_only_when_critical_clarification_is_pending() -> None
     assert decision.action is SupervisorAction.STOP
     assert decision.terminal is False
     assert decision.next_stage is SupervisorStage.CLIENT_UNDERSTANDING
-    assert decision.required_inputs == ("clarification:goal",)
+    assert decision.required_inputs == ("clarification:product_service",)
     assert decision.reason == "critical client information requires clarification"
 
 

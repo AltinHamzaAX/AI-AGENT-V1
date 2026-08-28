@@ -202,7 +202,9 @@ async def test_stage_writes_only_art_direction() -> None:
         PostWorkflowSection.CREATIVE_CONCEPT.value: payload.concept.model_dump(mode="json"),
         PostWorkflowSection.COPY.value: payload.copy_draft.model_dump(mode="json"),
         PostWorkflowSection.BRAND.value: payload.brand.model_dump(mode="json"),
-        PostWorkflowSection.ASSETS.value: payload.assets.model_dump(mode="json"),
+        PostWorkflowSection.ASSETS.value: [
+            asset.model_dump(mode="json") for asset in payload.assets.assets
+        ],
     }
     context = SupervisorStageContext(
         generation_id=uuid4(), post_id=uuid4(), job_id=uuid4(), workflow_state=state,

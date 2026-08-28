@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -22,6 +23,7 @@ from app.modules.posts.tools import ToolGateway
 from .schemas import DesignSpec, DesignSpecBody, DesignSpecInput
 
 DESIGN_SPEC_AGENT_NAME = "design_spec_compiler"
+logger = logging.getLogger(__name__)
 
 DESIGN_SPEC_DEFINITION = AgentDefinition(
     name=DESIGN_SPEC_AGENT_NAME,
@@ -51,6 +53,7 @@ class DesignSpecAgent:
         try:
             return _validated_spec(response.text, payload=payload, contract=contract)
         except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as first_exc:
+            logger.warning("posts.design_spec.validation_failed: %s", first_exc)
             repair = await self._complete(
                 payload,
                 contract,
@@ -60,7 +63,15 @@ class DesignSpecAgent:
         try:
             return _validated_spec(repair.text, payload=payload, contract=contract)
         except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
-            raise ProviderResponseError("design spec compiler returned invalid geometry") from exc
+            logger.warning("posts.design_spec.repair_failed: %s", exc)
+            try:
+                fallback = _deterministic_spec(payload)
+                return _validated_spec(fallback, payload=payload, contract=contract)
+            except (TypeError, ValueError, ValidationError) as final_exc:
+                logger.error("posts.design_spec.fallback_failed: %s", final_exc)
+                raise ProviderResponseError(
+                    "design spec compiler returned invalid geometry"
+                ) from final_exc
 
     async def _complete(
         self,
@@ -141,6 +152,85 @@ def _parse_json_object(value: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise TypeError("provider output must be a JSON object")
     return parsed
+
+
+def _deterministic_spec(payload: DesignSpecInput) -> str:
+    """Compile a conservative, composer-safe square layout from approved inputs."""
+    has_offer = payload.copy_draft.offer_copy is not None
+    offer_region = {"x": 640, "y": 520, "width": 280, "height": 76}
+    roles: list[dict[str, Any]] = [
+        {
+            "role": "headline",
+            "family_token": "brand-display",
+            "weight": 700,
+            "size_px": 58,
+            "line_height": 1.05,
+            "letter_spacing_px": 0,
+            "max_lines": 3,
+            "align": "left",
+        },
+        {
+            "role": "supporting_copy",
+            "family_token": "brand-body",
+            "weight": 400,
+            "size_px": 26,
+            "line_height": 1.3,
+            "letter_spacing_px": 0,
+            "max_lines": 4,
+            "align": "left",
+        },
+        {
+            "role": "cta",
+            "family_token": "brand-body",
+            "weight": 700,
+            "size_px": 25,
+            "line_height": 1.0,
+            "letter_spacing_px": 0,
+            "max_lines": 1,
+            "align": "center",
+        },
+    ]
+    if has_offer:
+        roles.insert(
+            2,
+            {
+                "role": "offer",
+                "family_token": "brand-display",
+                "weight": 700,
+                "size_px": 32,
+                "line_height": 1.0,
+                "letter_spacing_px": 0,
+                "max_lines": 2,
+                "align": "left",
+            },
+        )
+    body = {
+        "schema_version": "1.0",
+        "canvas": {"width": 1080, "height": 1080, "unit": "px"},
+        "safe_area": {"top": 64, "right": 64, "bottom": 64, "left": 64},
+        "grid": {"columns": 12, "rows": 12, "gutter": 24, "baseline": 8},
+        "regions": {
+            "product_bounds": {"x": 0, "y": 230, "width": 620, "height": 760},
+            "headline_region": {"x": 640, "y": 96, "width": 360, "height": 250},
+            "offer_region": offer_region if has_offer else None,
+            "cta_region": {"x": 640, "y": 640, "width": 280, "height": 72},
+            "logo_region": {"x": 820, "y": 920, "width": 180, "height": 72},
+            "legal_region": None,
+        },
+        "typography_roles": roles,
+        "color_system": [
+            {"role": "background", "value": "#F5F5F4", "source": "neutral"},
+            {"role": "text", "value": "#171717", "source": "neutral"},
+            {"role": "accent", "value": "#737373", "source": "neutral"},
+            {"role": "cta_background", "value": "#171717", "source": "neutral"},
+            {"role": "cta_text", "value": "#FFFFFF", "source": "neutral"},
+        ],
+        "graphic_elements": [],
+        "photography": payload.art_direction.photography_direction,
+        "lighting": payload.art_direction.lighting,
+        "background": payload.art_direction.color_direction,
+    }
+    return json.dumps(body, ensure_ascii=False)
 
 
 __all__ = [

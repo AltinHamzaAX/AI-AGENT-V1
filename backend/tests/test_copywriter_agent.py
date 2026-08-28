@@ -39,7 +39,6 @@ from app.modules.posts.providers import (
     LLMRequest,
     LLMResponse,
     ProviderBundle,
-    ProviderResponseError,
 )
 
 
@@ -151,33 +150,57 @@ async def test_unsupported_numeric_claim_is_repaired_from_complete_output() -> N
 
 
 @pytest.mark.asyncio
-async def test_repeated_unsupported_claim_fails_closed() -> None:
+async def test_repeated_unsupported_claim_is_removed_by_safe_normalization() -> None:
     payload = await _input()
     invalid = _copy_payload()
     invalid["headline"] = "The fastest guaranteed arrival"
 
-    with pytest.raises(ProviderResponseError):
-        await _run(payload, _CopyLLM([invalid, invalid]))
+    result = await _run(payload, _CopyLLM([invalid, invalid]))
+
+    assert "fastest" not in result.headline.casefold()
+    assert "guaranteed" not in result.headline.casefold()
 
 
 @pytest.mark.asyncio
-async def test_offer_must_be_preserved_exactly() -> None:
+async def test_invented_offer_is_replaced_with_the_approved_offer() -> None:
     payload = await _input()
     invalid = _copy_payload()
     invalid["offer_copy"] = "From EUR 25/day"
 
-    with pytest.raises(ProviderResponseError):
-        await _run(payload, _CopyLLM([invalid, invalid]))
+    result = await _run(payload, _CopyLLM([invalid, invalid]))
+
+    assert result.offer_copy == payload.offer
 
 
 @pytest.mark.asyncio
-async def test_mobile_readability_and_tone_are_enforced() -> None:
+async def test_mobile_readability_and_tone_are_normalized_safely() -> None:
     payload = await _input()
     invalid = _copy_payload()
     invalid["headline"] = "THIS HEADLINE SHOUTS FAR TOO LOUDLY FOR A SMALL MOBILE POST TODAY"
 
-    with pytest.raises(ProviderResponseError):
-        await _run(payload, _CopyLLM([invalid, invalid]))
+    result = await _run(payload, _CopyLLM([invalid, invalid]))
+
+    assert len(result.headline.split()) <= 12
+    assert result.headline != result.headline.upper()
+
+
+@pytest.mark.asyncio
+async def test_malformed_repair_uses_safe_complete_fallback() -> None:
+    payload = await _input()
+    invalid = _copy_payload()
+    invalid["supporting_copy"] = "Save 50% on every journey."
+    llm = _CopyLLM([invalid])
+
+    async def malformed_after_first(request: LLMRequest) -> LLMResponse:
+        llm.requests.append(request)
+        text = json.dumps(invalid) if len(llm.requests) == 1 else "not json"
+        return LLMResponse(text=text, provider="test-llm", model="copywriter-test")
+
+    llm.complete = malformed_after_first  # type: ignore[method-assign]
+    result = await _run(payload, llm)
+
+    assert "50%" not in result.supporting_copy
+    assert result.offer_copy == payload.offer
 
 
 @pytest.mark.asyncio

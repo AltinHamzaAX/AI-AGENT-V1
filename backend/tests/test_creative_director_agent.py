@@ -23,6 +23,7 @@ from app.integrations.mock import (
     MockVisionProvider,
 )
 from app.modules.posts.agents.creative_director import (
+    CONCEPT_SELECTION_DIMENSIONS,
     CREATIVE_DIRECTOR_DEFINITION,
     QUALITY_THRESHOLDS,
     CreativeDirection,
@@ -496,7 +497,7 @@ async def test_a_hook_that_needs_reading_is_not_a_hook() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("field", ["idea", "wordless_read"])
-async def test_a_concept_that_names_the_advertiser_is_a_slogan(field: str) -> None:
+async def test_advertiser_name_is_removed_from_wordless_concept_fields(field: str) -> None:
     payload = await _input()
     branded = _creative_payload()
     if field == "idea":
@@ -508,8 +509,14 @@ async def test_a_concept_that_names_the_advertiser_is_a_slogan(field: str) -> No
             "Prishtina Drive greets someone the moment they step outside."
         )
 
-    with pytest.raises(ProviderResponseError):
-        await _run(payload, _CreativeLLM([branded, branded]))
+    result = await _run(payload, _CreativeLLM([branded, branded]))
+
+    if field == "idea":
+        repaired = result.big_idea_candidates[1].idea
+    else:
+        repaired = result.visual_hooks[1].wordless_read
+    assert "prishtina drive" not in repaired.casefold()
+    assert any("deterministic relational repair" in item for item in result.limitations)
 
 
 @pytest.mark.asyncio
@@ -526,15 +533,17 @@ async def test_saying_the_image_needs_no_words_is_not_a_dependency_on_words() ->
 
 
 @pytest.mark.asyncio
-async def test_each_link_in_the_chain_must_add_to_the_one_above_it() -> None:
+async def test_repeated_candidate_link_is_repaired_after_bounded_patches() -> None:
     payload = await _input()
     echoed = _creative_payload()
     echoed["big_idea_candidates"][0]["territory_link"] = echoed["creative_territories"][0][
         "premise"
     ]
 
-    with pytest.raises(ProviderResponseError):
-        await _run(payload, _CreativeLLM([echoed, echoed]))
+    result = await _run(payload, _CreativeLLM([echoed, echoed]))
+
+    assert result.big_idea_candidates[0].territory_link != result.creative_territories[0].premise
+    assert any("deterministic relational repair" in item for item in result.limitations)
 
 
 @pytest.mark.asyncio
@@ -555,16 +564,22 @@ async def test_a_territory_that_only_renames_the_marketing_angle_fails() -> None
 
 
 @pytest.mark.asyncio
-async def test_identical_scorecards_are_rejected_rather_than_tie_broken() -> None:
-    """A tie resolved by list position is a decision nobody made."""
+async def test_identical_scorecards_get_explicit_distinct_tradeoffs() -> None:
     payload = await _input()
     tied = _creative_payload()
     repeated = dict(tied["big_idea_candidates"][1]["evaluation"])
     for candidate in tied["big_idea_candidates"]:
         candidate["evaluation"] = dict(repeated)
 
-    with pytest.raises(ProviderResponseError):
-        await _run(payload, _CreativeLLM([tied, tied]))
+    result = await _run(payload, _CreativeLLM([tied, tied]))
+
+    assert len(
+        {
+            tuple(candidate.evaluation.selection_scores().values())
+            for candidate in result.big_idea_candidates
+        }
+    ) == 3
+    assert any("deterministic relational repair" in item for item in result.limitations)
 
 
 @pytest.mark.asyncio
@@ -580,15 +595,18 @@ async def test_a_flawless_scorecard_is_not_a_credible_evaluation() -> None:
 
 
 @pytest.mark.asyncio
-async def test_every_candidate_must_name_a_weakness_of_its_own() -> None:
+async def test_repeated_weaknesses_get_distinct_execution_tradeoffs() -> None:
     payload = await _input()
     copied = _creative_payload()
     shared = copied["big_idea_candidates"][0]["evaluation"]["weakness"]
     for candidate in copied["big_idea_candidates"]:
         candidate["evaluation"]["weakness"] = shared
 
-    with pytest.raises(ProviderResponseError):
-        await _run(payload, _CreativeLLM([copied, copied]))
+    result = await _run(payload, _CreativeLLM([copied, copied]))
+
+    assert len(
+        {candidate.evaluation.weakness for candidate in result.big_idea_candidates}
+    ) == 3
 
 
 # --------------------------------------------------------------------------
@@ -659,8 +677,7 @@ async def test_semantic_repair_uses_bounded_patch_and_preserves_valid_content() 
 
 
 @pytest.mark.asyncio
-async def test_a_conceptual_failure_is_thought_again_rather_than_edited() -> None:
-    """A field editor asked to fix an idea returns the same idea, repunctuated."""
+async def test_scorecard_and_weakness_drift_use_a_bounded_patch() -> None:
     payload = await _input()
     flat = _creative_payload()
     repeated = dict(flat["big_idea_candidates"][1]["evaluation"])
@@ -671,9 +688,113 @@ async def test_a_conceptual_failure_is_thought_again_rather_than_edited() -> Non
     await _run(payload, llm)
 
     system = llm.requests[1].messages[0].content
-    assert "strict JSON correction editor" not in system
-    assert "CORRECTION PASS" in system
-    assert "3-5 genuinely distinct creative territories" in system
+    assert "strict JSON correction editor" in system
+    assert "CORRECTION PASS" not in system
+
+
+def test_identical_scorecards_alone_use_a_bounded_patch() -> None:
+    from app.modules.posts.agents.creative_director.agent import _needs_regeneration
+
+    assert not _needs_regeneration(
+        "identical scorecards are not an evaluation: score each route on its own merits"
+    )
+
+
+def test_basis_metadata_is_bounded_and_grounded_deterministically() -> None:
+    from app.modules.posts.agents.creative_director.agent import _normalize_basis_references
+
+    payload = {
+        "creative_territories": [
+            {"basis": ["marketing_strategy.marketing_angle", "audience.needs"] * 12}
+        ],
+        "visual_hooks": [
+            {"basis": ["marketing_strategy.marketing_angle", "brand.identity_summary"] * 12}
+        ],
+        "big_idea_candidates": [
+            {"basis": ["marketing_strategy.marketing_angle", "audience.needs"] * 12}
+        ],
+    }
+    allowed = {
+        "marketing_strategy.marketing_angle",
+        "audience.needs",
+        "brand.identity_summary",
+    }
+
+    result = _normalize_basis_references(payload, allowed)
+
+    assert result["creative_territories"][0]["basis"] == [
+        "marketing_strategy.marketing_angle",
+        "audience.needs",
+    ]
+    assert result["visual_hooks"][0]["basis"] == [
+        "marketing_strategy.marketing_angle",
+        "brand.identity_summary",
+    ]
+    assert result["big_idea_candidates"][0]["basis"] == [
+        "marketing_strategy.marketing_angle",
+        "audience.needs",
+    ]
+
+    unsafe = {"creative_territories": [{"basis": ["invented.evidence"]}]}
+    assert _normalize_basis_references(unsafe, allowed) == unsafe
+
+
+def test_relational_stabilizer_repairs_only_named_repetition_failures() -> None:
+    from app.modules.posts.agents.creative_director.agent import (
+        _stabilize_relational_repair,
+    )
+
+    original = _creative_payload()
+    result, changed = _stabilize_relational_repair(
+        original,
+        "idea_1 territory link restates its input instead of interpreting it | "
+        "idea_1 hook link restates its input instead of interpreting it | "
+        "hook_1 symbol must name the single element | identical scorecards | "
+        "candidate weaknesses must be meaningfully distinct",
+    )
+
+    assert changed
+    assert result["big_idea_candidates"][0]["territory_link"] != original[
+        "big_idea_candidates"
+    ][0]["territory_link"]
+    assert result["big_idea_candidates"][0]["hook_link"] != original[
+        "big_idea_candidates"
+    ][0]["hook_link"]
+    assert result["visual_hooks"][0]["symbol"] != original["visual_hooks"][0]["symbol"]
+    assert len(
+        {
+            tuple(candidate["evaluation"][name] for name in CONCEPT_SELECTION_DIMENSIONS)
+            for candidate in result["big_idea_candidates"]
+        }
+    ) == 3
+    assert len(
+        {
+            candidate["evaluation"]["weakness"]
+            for candidate in result["big_idea_candidates"]
+        }
+    ) == 3
+
+
+def test_relational_stabilizer_removes_advertiser_voice_and_global_symbol_repetition() -> None:
+    from app.modules.posts.agents.creative_director.agent import (
+        _stabilize_relational_repair,
+    )
+
+    original = _creative_payload()
+    original["big_idea_candidates"][0]["idea"] = (
+        "Promotiva turns arrival into a metaphor that can continue across executions."
+    )
+    result, changed = _stabilize_relational_repair(
+        original,
+        "visual hook symbols must be meaningfully distinct | "
+        "idea_1 names the advertiser, which makes it a line | "
+        "idea_1 must creatively interpret, not repeat, the marketing usp",
+        source={"semantic_contract": {"brand": "Promotiva", "company": "Promotiva"}},
+    )
+
+    assert changed
+    assert "promotiva" not in result["big_idea_candidates"][0]["idea"].casefold()
+    assert len({hook["symbol"] for hook in result["visual_hooks"]}) == 3
 
 
 @pytest.mark.asyncio
@@ -744,6 +865,85 @@ def test_patch_normalizes_common_ids_and_ignores_unknown_items() -> None:
         "A corrected conceptual transformation."
     )
     assert len(patched["creative_territories"]) == 3
+
+
+def test_patch_normalizes_common_group_aliases() -> None:
+    from app.modules.posts.agents.creative_director.agent import _apply_provider_patch
+
+    result = _apply_provider_patch(
+        _creative_payload(),
+        {"hooks": [{"id": "hook_1", "symbol": "A corrected singular symbol"}]},
+    )
+
+    assert result["visual_hooks"][0]["symbol"] == "A corrected singular symbol"
+
+
+def test_patch_ignores_echoed_correction_metadata_only() -> None:
+    from app.modules.posts.agents.creative_director.agent import _apply_provider_patch
+
+    result = _apply_provider_patch(
+        _creative_payload(),
+        {
+            "validation_error": "echoed provider context",
+            "correction_requirements": ["echoed instruction"],
+            "big_idea_candidates": [
+                {"id": "idea_1", "hook_link": "A corrected interpretive link."}
+            ],
+        },
+    )
+
+    assert result["big_idea_candidates"][0]["hook_link"] == (
+        "A corrected interpretive link."
+    )
+
+
+def test_patch_ignores_candidate_hook_link_misplaced_on_visual_hook() -> None:
+    from app.modules.posts.agents.creative_director.agent import _apply_provider_patch
+
+    result = _apply_provider_patch(
+        _creative_payload(),
+        {
+            "visual_hooks": [
+                {
+                    "id": "hook_1",
+                    "symbol": "A corrected symbol",
+                    "hook_link": "This belongs to a candidate and is ignored here.",
+                }
+            ]
+        },
+    )
+
+    assert result["visual_hooks"][0]["symbol"] == "A corrected symbol"
+    assert "hook_link" not in result["visual_hooks"][0]
+
+
+def test_three_partial_edits_per_group_are_not_mistaken_for_a_full_output() -> None:
+    from app.modules.posts.agents.creative_director.agent import _apply_provider_patch
+
+    previous = _creative_payload()
+    patch = {
+        "creative_territories": [
+            {"id": f"territory_{index}", "premise": f"Reframed route {index}."}
+            for index in range(1, 4)
+        ],
+        "visual_hooks": [
+            {"id": f"hook_{index}", "symbol": f"Distinct symbol {index}"}
+            for index in range(1, 4)
+        ],
+        "big_idea_candidates": [
+            {"id": f"idea_{index}", "hook_link": f"Interpretive link {index}."}
+            for index in range(1, 4)
+        ],
+    }
+
+    result = _apply_provider_patch(previous, patch)
+
+    assert result["creative_territories"][0]["name"] == previous[
+        "creative_territories"
+    ][0]["name"]
+    assert result["creative_territories"][2]["premise"] == "Reframed route 3."
+    assert result["visual_hooks"][1]["symbol"] == "Distinct symbol 2"
+    assert result["big_idea_candidates"][0]["hook_link"] == "Interpretive link 1."
 
 
 @pytest.mark.asyncio
@@ -1017,7 +1217,8 @@ def test_prompt_forbids_final_poster_and_requires_structured_exploration() -> No
         }
     )
 
-    assert "3-5 genuinely distinct creative territories" in prompt
+    assert "exactly 3 genuinely distinct creative territories" in prompt
+    assert "fit within 3000 output tokens" in prompt
     assert "Big Idea" in prompt
     assert "Do not write a headline" in prompt
     assert "final poster" in prompt

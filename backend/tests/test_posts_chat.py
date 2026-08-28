@@ -371,11 +371,9 @@ def test_an_order_survives_a_qualifier_before_the_noun() -> None:
 
 
 def test_clarification_questions_follow_the_client_language() -> None:
-    albanian = ConversationContext().merge(
-        ContextUpdate(product_service="Skoda Fabia", language="shqip")
-    )
+    albanian = ConversationContext().merge(ContextUpdate(language="shqip"))
     question = albanian.clarification().questions[0].question
-    assert question.startswith("Cili është rezultati")
+    assert question.startswith("Cilin produkt")
 
 
 # --------------------------------------------------------------------------
@@ -447,7 +445,7 @@ async def test_missing_information_asks_instead_of_generating(
 
 
 @pytest.mark.asyncio
-async def test_answering_missing_facts_automatically_starts_the_pending_request(
+async def test_a_short_brief_starts_without_optional_marketing_questions(
     chat_api: tuple[AsyncClient, ScriptedLLM],
 ) -> None:
     client, llm = chat_api
@@ -477,12 +475,11 @@ async def test_answering_missing_facts_automatically_starts_the_pending_request(
         "Target diaspora; dua mÃ« shumÃ« rezervime. Instagram. CTA rezervo tani.",
     )
 
-    assert first["action"] == "ask"
-    assert first["generation_ready"] is False
-    assert second["intent"] == "GENERATE_POST"
-    assert second["action"] == "generate"
-    assert second["generation_ready"] is True
-    assert second["workflow"] is not None
+    assert first["intent"] == "GENERATE_POST"
+    assert first["action"] == "generate"
+    assert first["generation_ready"] is True
+    assert first["workflow"] is not None
+    assert second["action"] == "reply"
 
 
 @pytest.mark.asyncio
@@ -691,7 +688,7 @@ async def test_explicit_order_overrides_a_conversational_classification(
 
 
 @pytest.mark.asyncio
-async def test_repeated_explicit_order_proceeds_on_an_inferred_goal(
+async def test_missing_goal_does_not_require_a_repeated_explicit_order(
     chat_api: tuple[AsyncClient, ScriptedLLM],
 ) -> None:
     client, llm = chat_api
@@ -713,12 +710,12 @@ async def test_repeated_explicit_order_proceeds_on_an_inferred_goal(
     first = await _turn(client, headers, conversation_id, "Ma krijo një post për Skoda Fabia.")
     second = await _turn(client, headers, conversation_id, "Gjeneroje postin.")
 
-    assert first["intent"] == "MISSING_INFORMATION"
-    assert first["workflow"] is None
+    assert first["intent"] == "GENERATE_POST"
+    assert first["workflow"] is not None
     assert second["intent"] == "GENERATE_POST"
     assert second["workflow"] is not None
 
-    seeded = await _workflow_context(client, headers, second["workflow"])
+    seeded = await _workflow_context(client, headers, first["workflow"])
     assert "goal" not in seeded["project_context"]
     assert seeded["project_context"]["product_service"] == "Skoda Fabia"
 

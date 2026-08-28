@@ -19,7 +19,7 @@ from app.modules.posts.agents.reference_validator import (
 from app.modules.posts.domain.enums import PostWorkflowSection
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
 from app.modules.posts.domain.supervisor import DEFAULT_SUPERVISOR_PLAN, SupervisorStage
-from app.modules.posts.providers import LLMRequest, LLMResponse, ProviderResponseError
+from app.modules.posts.providers import LLMRequest, LLMResponse
 from app.modules.posts.tools.research import (
     ExternalResearchResult,
     ResearchCategory,
@@ -173,14 +173,16 @@ async def test_copy_classification_forces_similarity_and_originality_revision() 
 
 
 @pytest.mark.asyncio
-async def test_invalid_provider_output_is_repaired_once_then_fails_closed() -> None:
+async def test_invalid_provider_output_uses_deterministic_guards() -> None:
     llm = _LLM([{}, {}])
 
-    with pytest.raises(ProviderResponseError, match="unusable review"):
-        await ReferenceOriginalityValidator(llm).review(_payload())
+    report = await ReferenceOriginalityValidator(llm).review(_payload())
 
     assert len(llm.requests) == 2
     assert "CORRECTION PASS" in llm.requests[1].messages[0].content
+    assert report.decision is ReferenceDecision.PASS
+    assert all(item.score == 8 for item in report.checks)
+    assert "Deterministic" in report.summary
 
 
 def test_validator_rejects_mixed_semantic_contracts() -> None:

@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     #: LLM_MODEL; a larger model here costs nothing on the other stages.
     creative_llm_model: str = ""
     ollama_base_url: str = "http://host.docker.internal:11434"
+    ollama_llm_num_predict: int = Field(default=1_024, gt=0)
+    # Creative exploration emits a substantially larger structured contract
+    # than the extraction stages, so it needs its own output budget.
+    ollama_creative_num_predict: int = Field(default=3_072, gt=0)
+    ollama_vision_num_predict: int = Field(default=768, gt=0)
+    ollama_keep_alive: str = "10m"
     image_provider: str = ""
     image_model: str = ""
     huggingface_api_base_url: str = "https://router.huggingface.co"
