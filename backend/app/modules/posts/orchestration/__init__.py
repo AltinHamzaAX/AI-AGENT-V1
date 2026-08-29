@@ -1,5 +1,6 @@
 """Posts workflow coordination boundary."""
 
+from app.modules.posts.orchestration.art_direction import ArtDirectionStageHandler
 from app.modules.posts.orchestration.asset_intelligence import (
     AssetIntelligenceStageHandler,
 )
@@ -10,11 +11,33 @@ from app.modules.posts.orchestration.brand_product import BrandProductStageHandl
 from app.modules.posts.orchestration.client_understanding import (
     ClientUnderstandingStageHandler,
 )
+from app.modules.posts.orchestration.composition import (
+    CompositionInputResolver,
+    CompositionStageHandler,
+    WorkflowCompositionResolver,
+)
+from app.modules.posts.orchestration.copywriting import CopywritingStageHandler
+from app.modules.posts.orchestration.creative_direction import (
+    CreativeDirectionStageHandler,
+)
+from app.modules.posts.orchestration.design_critic import DesignCriticStageHandler
+from app.modules.posts.orchestration.design_spec import DesignSpecStageHandler
 from app.modules.posts.orchestration.external_research import (
     ExternalResearchStageHandler,
 )
+from app.modules.posts.orchestration.generation_planning import (
+    GenerationPlanningStageHandler,
+)
+from app.modules.posts.orchestration.marketing_critic import MarketingCriticStageHandler
 from app.modules.posts.orchestration.marketing_strategy import (
     MarketingStrategyStageHandler,
+)
+from app.modules.posts.orchestration.production import ProductionStageHandler
+from app.modules.posts.orchestration.quality_scoring import QualityScoringStageHandler
+from app.modules.posts.orchestration.reference_validator import ReferenceValidatorStageHandler
+from app.modules.posts.orchestration.scene_purity import ScenePurityStageHandler
+from app.modules.posts.orchestration.semantic_contract import (
+    SemanticContractStageHandler,
 )
 from app.modules.posts.orchestration.supervisor import (
     PostSupervisorExecutor,
@@ -25,19 +48,38 @@ from app.modules.posts.orchestration.supervisor import (
     SupervisorStageHandler,
     SupervisorStageResult,
 )
+from app.modules.posts.orchestration.verification import VerificationStageHandler
+from app.modules.posts.orchestration.vision_critic import VisionCriticStageHandler
 
 __all__ = [
+    "ArtDirectionStageHandler",
     "AudienceIntelligenceStageHandler",
     "AssetIntelligenceStageHandler",
     "BrandProductStageHandler",
     "ClientUnderstandingStageHandler",
+    "CompositionInputResolver",
+    "CompositionStageHandler",
+    "CreativeDirectionStageHandler",
+    "DesignSpecStageHandler",
+    "DesignCriticStageHandler",
+    "VerificationStageHandler",
+    "VisionCriticStageHandler",
+    "QualityScoringStageHandler",
+    "ReferenceValidatorStageHandler",
+    "CopywritingStageHandler",
     "ExternalResearchStageHandler",
+    "GenerationPlanningStageHandler",
     "MarketingStrategyStageHandler",
     "PostSupervisorExecutor",
+    "ProductionStageHandler",
+    "ScenePurityStageHandler",
+    "SemanticContractStageHandler",
+    "MarketingCriticStageHandler",
     "SupervisorBlockedError",
     "SupervisorCheckpoint",
     "SupervisorCheckpointStore",
     "SupervisorStageContext",
     "SupervisorStageHandler",
     "SupervisorStageResult",
+    "WorkflowCompositionResolver",
 ]

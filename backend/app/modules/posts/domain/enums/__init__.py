@@ -42,9 +42,16 @@ class PostWorkflowSection(StrEnum):
     COPY = "copy"
     ART_DIRECTION = "art_direction"
     DESIGN_SPEC = "design_spec"
+    REFERENCE_VALIDATION = "reference_validation"
     GENERATION_PLAN = "generation_plan"
     GENERATION_ARTIFACTS = "generation_artifacts"
+    SCENE_PURITY = "scene_purity"
+    POST_DRAFT = "post_draft"
+    VERIFICATION = "verification"
     QUALITY = "quality"
+    DESIGN_QUALITY = "design_quality"
+    VISION_QUALITY = "vision_quality"
+    QUALITY_APPROVAL = "quality_approval"
     REVISION_HISTORY = "revision_history"
 
 

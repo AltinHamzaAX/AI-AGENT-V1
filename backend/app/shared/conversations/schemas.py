@@ -4,11 +4,18 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, JsonValue, field_validator
 
-from app.shared.conversations.domain import Conversation, Message, MessagePage, MessageRole
+from app.shared.conversations.domain import (
+    Conversation,
+    ConversationKind,
+    Message,
+    MessagePage,
+    MessageRole,
+)
 
 
 class ConversationCreate(BaseModel):
     title: str | None = Field(default=None, max_length=200)
+    type: ConversationKind = ConversationKind.POST
 
     @field_validator("title")
     @classmethod
@@ -23,6 +30,7 @@ class ConversationRead(BaseModel):
     id: UUID
     project_id: UUID
     title: str | None
+    type: ConversationKind
     created_at: datetime
     updated_at: datetime
 
@@ -32,6 +40,7 @@ class ConversationRead(BaseModel):
             id=conversation.id,
             project_id=conversation.scope.project_id,
             title=conversation.title,
+            type=conversation.kind,
             created_at=conversation.created_at,
             updated_at=conversation.updated_at,
         )
@@ -70,6 +79,11 @@ class MessageRead(BaseModel):
             metadata=message.metadata,
             created_at=message.created_at,
         )
+
+
+class ConversationTurnRead(BaseModel):
+    user: MessageRead
+    assistant: MessageRead
 
 
 class MessagePageRead(BaseModel):

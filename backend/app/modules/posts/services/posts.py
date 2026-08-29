@@ -79,6 +79,18 @@ class PostsService:
             raise PostNotFoundError
         return post
 
+    async def find_post_by_conversation(
+        self,
+        *,
+        conversation_id: UUID,
+        scope: PostScope,
+    ) -> Post | None:
+        """The Post a conversation already owns, if the client started one."""
+        return await self._repository.find_post_by_conversation(
+            conversation_id=conversation_id,
+            scope=scope,
+        )
+
     async def request_generation(
         self,
         *,

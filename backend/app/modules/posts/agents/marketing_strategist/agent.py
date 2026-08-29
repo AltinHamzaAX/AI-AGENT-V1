@@ -7,7 +7,11 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from app.modules.posts.agents.framework import AgentExecutionContext, AgentRuntime
-from app.modules.posts.domain.contracts import AgentDefinition, RetryPolicy
+from app.modules.posts.domain.contracts import (
+    SPECIALIST_TIMEOUT_SECONDS,
+    AgentDefinition,
+    RetryPolicy,
+)
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
 from app.modules.posts.providers import (
     LLMMessage,
@@ -55,9 +59,10 @@ MARKETING_STRATEGIST_DEFINITION = AgentDefinition(
     input_schema=MarketingStrategyInput,
     output_schema=MarketingStrategy,
     allowed_tools=MARKETING_FRAMEWORK_TOOL_NAMES,
-    # Everything this agent needs was gathered by earlier stages, so the whole
-    # cost is one reasoning call over a large assembled context.
-    timeout_seconds=180,
+    # The local model may need an initial call plus one complete correction pass.
+    # Use the framework's maximum per-attempt budget; two attempts remain below
+    # the generation job's 900s outer deadline.
+    timeout_seconds=SPECIALIST_TIMEOUT_SECONDS,
     retry_policy=RetryPolicy(max_attempts=2, retry_on_timeout=True, retry_on_error=True),
 )
 
@@ -182,6 +187,15 @@ class MarketingStrategistAgent:
                 source=source,
             )
         except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as first_exc:
+            stabilized = _stabilize_single_minded_message(
+                response.text,
+                payload=payload,
+                contract=contract,
+                allowed_basis=allowed_basis,
+                source=source,
+            )
+            if stabilized is not None:
+                return stabilized
             repair = await self._complete(
                 source,
                 allowed_basis,
@@ -197,6 +211,15 @@ class MarketingStrategistAgent:
                 source=source,
             )
         except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as exc:
+            stabilized = _stabilize_single_minded_message(
+                repair.text,
+                payload=payload,
+                contract=contract,
+                allowed_basis=allowed_basis,
+                source=source,
+            )
+            if stabilized is not None:
+                return stabilized
             raise ProviderResponseError(
                 "marketing strategist returned invalid structured output"
             ) from exc
@@ -285,6 +308,113 @@ def _validated_strategy(
     strategy = _canonicalize_strategy_basis(strategy, allowed_basis=allowed_basis)
     _validate_strategy(strategy, payload, contract, allowed_basis, source)
     return _ground_strategy(strategy, payload, contract)
+
+
+def _stabilize_single_minded_message(
+    raw_output: str,
+    *,
+    payload: MarketingStrategyInput,
+    contract: PostSemanticContract,
+    allowed_basis: set[str],
+    source: dict[str, Any],
+) -> MarketingStrategy | None:
+    """Recover a valid strategy when only its message needs deterministic focus.
+
+    Small local models commonly understand the strategy but combine two promises
+    in the final message. Re-generating the whole object makes already-good
+    decisions unstable. Replace that one field with one verbatim, verified
+    product promise and then run the complete validator again. Any defect outside
+    this field therefore still fails closed.
+    """
+    try:
+        strategy = MarketingStrategyLLMOutput.model_validate(
+            _parse_json_object(raw_output)
+        )
+        strategy = _canonicalize_strategy_basis(strategy, allowed_basis=allowed_basis)
+        replacement = _grounded_single_message(strategy, payload)
+        strategy = strategy.model_copy(update={"single_minded_message": replacement})
+        _validate_strategy(strategy, payload, contract, allowed_basis, source)
+    except (json.JSONDecodeError, TypeError, ValueError, ValidationError):
+        return None
+
+    grounded = _ground_strategy(strategy, payload, contract)
+    limitation = (
+        "The single-minded message was deterministically focused on one verified "
+        "product promise after provider output combined or overstated promises."
+    )
+    return grounded.model_copy(
+        update={"limitations": [*grounded.limitations, limitation][:20]}
+    )
+
+
+def _grounded_single_message(
+    strategy: MarketingStrategyLLMOutput,
+    payload: MarketingStrategyInput,
+) -> StrategicDecision:
+    current = strategy.single_minded_message
+    selected_basis: str | None = None
+    phrases: list[str] = []
+
+    chains = list(payload.product.feature_benefit_value)
+    for chain in chains:
+        basis = f"product.feature_benefit_value.{chain.source_fact}"
+        if basis in current.basis:
+            selected_basis = basis
+            phrases = [chain.benefit, chain.feature, chain.customer_value]
+            break
+    if selected_basis is None and chains:
+        chain = chains[0]
+        selected_basis = f"product.feature_benefit_value.{chain.source_fact}"
+        phrases = [chain.benefit, chain.feature, chain.customer_value]
+
+    if selected_basis is None:
+        candidates = list(payload.product.usp_candidates)
+        selected_index = next(
+            (
+                index
+                for index in range(1, len(candidates) + 1)
+                if f"product.usp_candidates.{index}" in current.basis
+            ),
+            1 if candidates else None,
+        )
+        if selected_index is not None:
+            selected_basis = f"product.usp_candidates.{selected_index}"
+            phrases = [candidates[selected_index - 1].text]
+
+    if selected_basis is None:
+        raise ValueError("no verified product promise is available for message recovery")
+
+    phrase = next(
+        (
+            value.strip().rstrip(".!?")
+            for value in phrases
+            if value.strip()
+            and not _SENTENCE_END.search(value.strip().rstrip(".!?"))
+            and not any(
+                marker in f" {_semantic(value)} " for marker in _MULTI_PROMISE_MARKERS
+            )
+        ),
+        None,
+    )
+    if not phrase:
+        raise ValueError("no single verified product promise is suitable for recovery")
+
+    audience_basis = next(
+        (
+            reference
+            for reference in current.basis
+            if reference.startswith(("audience.", "research.audience."))
+        ),
+        "audience.customer_tension",
+    )
+    return current.model_copy(
+        update={
+            "decision": f"{phrase}.",
+            "rationale": "This keeps the message focused on one verified product promise.",
+            "principle": DECISION_PRINCIPLES["single_minded_message"],
+            "basis": [selected_basis, audience_basis],
+        }
+    )
 
 
 def _canonicalize_strategy_basis(

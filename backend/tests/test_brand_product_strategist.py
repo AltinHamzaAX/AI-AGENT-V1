@@ -175,6 +175,26 @@ async def test_brand_product_maps_feature_to_benefit_and_customer_value() -> Non
 
 
 @pytest.mark.asyncio
+async def test_product_carries_every_fact_referenced_by_its_promises() -> None:
+    result = await BrandProductStageHandler(
+        _providers(
+            _SequenceLLM(
+                _response(
+                    brand_fact_keys=["pickup availability"],
+                    product_fact_keys=["vehicle class"],
+                )
+            )
+        )
+    ).execute(_context())
+
+    product = result.outputs[PostWorkflowSection.PRODUCT]
+    assert product["verified_facts"] == {
+        "vehicle class": "compact automatic car",
+        "pickup availability": "24/7 airport pickup",
+    }
+
+
+@pytest.mark.asyncio
 async def test_brand_product_rejects_an_unsupported_feature() -> None:
     llm = _SequenceLLM(
         _response(

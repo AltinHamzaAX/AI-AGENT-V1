@@ -243,7 +243,11 @@ async def _run(live_research: bool) -> None:
     runtime = AgentRuntime(tool_registry)
     register_marketing_strategist_agent(runtime, providers.llm)
 
-    print("Deciding strategy, 60-180s, no output until it answers...", flush=True)
+    print(
+        "Deciding strategy, usually 60-180s; a correction pass can extend one "
+        "attempt to about 5 minutes...",
+        flush=True,
+    )
     started = time.perf_counter()
     output = await runtime.run(
         MARKETING_STRATEGIST_AGENT_NAME,

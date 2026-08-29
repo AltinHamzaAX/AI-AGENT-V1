@@ -27,9 +27,16 @@ class SupervisorStage(StrEnum):
     COPYWRITING = "copywriting"
     ART_DIRECTION = "art_direction"
     DESIGN_SPEC = "design_spec"
+    REFERENCE_VALIDATION = "reference_validation"
     GENERATION_PLANNING = "generation_planning"
     PRODUCTION = "production"
+    SCENE_PURITY = "scene_purity"
+    COMPOSITION = "composition"
+    VERIFICATION = "verification"
     QUALITY_REVIEW = "quality_review"
+    DESIGN_REVIEW = "design_review"
+    VISION_REVIEW = "vision_review"
+    QUALITY_SCORING = "quality_scoring"
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,7 +191,13 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
         SupervisorStagePolicy(
             SupervisorStage.CREATIVE_CONCEPT,
             dependencies=(SupervisorStage.MARKETING_STRATEGY,),
-            required_sections=(PostWorkflowSection.MARKETING_STRATEGY,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.BRAND,
+                PostWorkflowSection.AUDIENCE,
+                PostWorkflowSection.RESEARCH,
+                PostWorkflowSection.MARKETING_STRATEGY,
+            ),
             output_sections=(PostWorkflowSection.CREATIVE_CONCEPT,),
         ),
         SupervisorStagePolicy(
@@ -193,44 +206,186 @@ DEFAULT_SUPERVISOR_PLAN = SupervisorPlan(
             required_sections=(
                 PostWorkflowSection.SEMANTIC_CONTRACT,
                 PostWorkflowSection.CREATIVE_CONCEPT,
+                PostWorkflowSection.MARKETING_STRATEGY,
+                PostWorkflowSection.BRAND,
             ),
             output_sections=(PostWorkflowSection.COPY,),
         ),
         SupervisorStagePolicy(
             SupervisorStage.ART_DIRECTION,
-            dependencies=(SupervisorStage.CREATIVE_CONCEPT,),
-            required_sections=(PostWorkflowSection.CREATIVE_CONCEPT,),
+            dependencies=(
+                SupervisorStage.COPYWRITING,
+                SupervisorStage.ASSET_INTELLIGENCE,
+            ),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.CREATIVE_CONCEPT,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.BRAND,
+                PostWorkflowSection.ASSETS,
+            ),
             output_sections=(PostWorkflowSection.ART_DIRECTION,),
         ),
         SupervisorStagePolicy(
             SupervisorStage.DESIGN_SPEC,
             dependencies=(SupervisorStage.COPYWRITING, SupervisorStage.ART_DIRECTION),
             required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
                 PostWorkflowSection.COPY,
                 PostWorkflowSection.ART_DIRECTION,
             ),
             output_sections=(PostWorkflowSection.DESIGN_SPEC,),
         ),
         SupervisorStagePolicy(
+            SupervisorStage.REFERENCE_VALIDATION,
+            dependencies=(SupervisorStage.DESIGN_SPEC,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.BRAND,
+                PostWorkflowSection.RESEARCH,
+                PostWorkflowSection.MARKETING_STRATEGY,
+                PostWorkflowSection.CREATIVE_CONCEPT,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.ART_DIRECTION,
+                PostWorkflowSection.DESIGN_SPEC,
+            ),
+            output_sections=(
+                PostWorkflowSection.REFERENCE_VALIDATION,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
+        ),
+        SupervisorStagePolicy(
             SupervisorStage.GENERATION_PLANNING,
-            dependencies=(SupervisorStage.DESIGN_SPEC, SupervisorStage.ASSET_INTELLIGENCE),
+            dependencies=(
+                SupervisorStage.REFERENCE_VALIDATION,
+                SupervisorStage.ASSET_INTELLIGENCE,
+            ),
             required_sections=(
                 PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.REFERENCE_VALIDATION,
                 PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.ASSETS,
             ),
             output_sections=(PostWorkflowSection.GENERATION_PLAN,),
         ),
         SupervisorStagePolicy(
             SupervisorStage.PRODUCTION,
             dependencies=(SupervisorStage.GENERATION_PLANNING,),
-            required_sections=(PostWorkflowSection.GENERATION_PLAN,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.CREATIVE_CONCEPT,
+                PostWorkflowSection.ART_DIRECTION,
+                PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.ASSETS,
+                PostWorkflowSection.GENERATION_PLAN,
+            ),
             output_sections=(PostWorkflowSection.GENERATION_ARTIFACTS,),
         ),
         SupervisorStagePolicy(
-            SupervisorStage.QUALITY_REVIEW,
+            SupervisorStage.SCENE_PURITY,
             dependencies=(SupervisorStage.PRODUCTION,),
-            required_sections=(PostWorkflowSection.GENERATION_ARTIFACTS,),
-            output_sections=(PostWorkflowSection.QUALITY,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.GENERATION_PLAN,
+                PostWorkflowSection.GENERATION_ARTIFACTS,
+            ),
+            # Writes revision history so a contaminated plate can send production
+            # back for another scene instead of reaching the composer.
+            output_sections=(
+                PostWorkflowSection.SCENE_PURITY,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
+        ),
+        SupervisorStagePolicy(
+            SupervisorStage.COMPOSITION,
+            dependencies=(SupervisorStage.SCENE_PURITY,),
+            required_sections=(
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.ASSETS,
+                PostWorkflowSection.GENERATION_ARTIFACTS,
+                PostWorkflowSection.SCENE_PURITY,
+            ),
+            output_sections=(PostWorkflowSection.POST_DRAFT,),
+        ),
+        SupervisorStagePolicy(
+            SupervisorStage.VERIFICATION,
+            dependencies=(SupervisorStage.COMPOSITION,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.POST_DRAFT,
+            ),
+            # Hard gates run before anything scores the post, so a blocked render
+            # never costs a marketing or design review, and no score can be
+            # pointed at afterwards as a reason to let it through.
+            output_sections=(PostWorkflowSection.VERIFICATION,),
+        ),
+        SupervisorStagePolicy(
+            SupervisorStage.QUALITY_REVIEW,
+            dependencies=(SupervisorStage.VERIFICATION,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.MARKETING_STRATEGY,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.POST_DRAFT,
+            ),
+            output_sections=(
+                PostWorkflowSection.QUALITY,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
+        ),
+        SupervisorStagePolicy(
+            SupervisorStage.DESIGN_REVIEW,
+            dependencies=(SupervisorStage.QUALITY_REVIEW,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.ART_DIRECTION,
+                PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.POST_DRAFT,
+                PostWorkflowSection.QUALITY,
+            ),
+            output_sections=(
+                PostWorkflowSection.DESIGN_QUALITY,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
+        ),
+        SupervisorStagePolicy(
+            SupervisorStage.VISION_REVIEW,
+            dependencies=(SupervisorStage.DESIGN_REVIEW,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.ASSETS,
+                PostWorkflowSection.POST_DRAFT,
+                PostWorkflowSection.DESIGN_QUALITY,
+            ),
+            output_sections=(
+                PostWorkflowSection.VISION_QUALITY,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
+        ),
+        SupervisorStagePolicy(
+            SupervisorStage.QUALITY_SCORING,
+            dependencies=(SupervisorStage.VISION_REVIEW,),
+            required_sections=(
+                PostWorkflowSection.SEMANTIC_CONTRACT,
+                PostWorkflowSection.CREATIVE_CONCEPT,
+                PostWorkflowSection.COPY,
+                PostWorkflowSection.ART_DIRECTION,
+                PostWorkflowSection.DESIGN_SPEC,
+                PostWorkflowSection.POST_DRAFT,
+                PostWorkflowSection.VERIFICATION,
+                PostWorkflowSection.QUALITY,
+                PostWorkflowSection.DESIGN_QUALITY,
+                PostWorkflowSection.VISION_QUALITY,
+            ),
+            output_sections=(
+                PostWorkflowSection.QUALITY_APPROVAL,
+                PostWorkflowSection.REVISION_HISTORY,
+            ),
         ),
     )
 )
@@ -254,6 +409,20 @@ class PostSupervisor:
         state = validate_workflow_state(workflow_state)
         progress = _progress(state)
         quality = state[PostWorkflowSection.QUALITY.value]
+        design_quality = state[PostWorkflowSection.DESIGN_QUALITY.value]
+        verification = state[PostWorkflowSection.VERIFICATION.value]
+        approval = state[PostWorkflowSection.QUALITY_APPROVAL.value]
+        # Read before any score, and terminal: a hard verification gate is not
+        # weighed against how good the post looks, so nothing below can revive a
+        # render that failed one.
+        if verification.get("decision") == "BLOCKED":
+            return SupervisorDecision(
+                action=SupervisorAction.STOP,
+                next_stage=None,
+                reason="hard verification gate blocked the workflow",
+                state_requirements=(PostWorkflowSection.VERIFICATION,),
+                terminal=True,
+            )
         if quality.get("hard_fail") is True or quality.get("decision") in {
             "BLOCKED",
             "REJECT",
@@ -263,6 +432,14 @@ class PostSupervisor:
                 next_stage=None,
                 reason="quality hard gate blocked the workflow",
                 state_requirements=(PostWorkflowSection.QUALITY,),
+                terminal=True,
+            )
+        if approval.get("decision") == "REJECT":
+            return SupervisorDecision(
+                action=SupervisorAction.STOP,
+                next_stage=None,
+                reason="quality approval engine rejected the render",
+                state_requirements=(PostWorkflowSection.QUALITY_APPROVAL,),
                 terminal=True,
             )
 
@@ -286,7 +463,7 @@ class PostSupervisor:
             return SupervisorDecision(
                 action=SupervisorAction.REVISE,
                 next_stage=revision_target,
-                reason="targeted revision requested by quality review",
+                reason="targeted revision requested by revision director",
                 state_requirements=policy.required_sections,
             )
 
@@ -356,6 +533,16 @@ class PostSupervisor:
                 reason="workflow dependency graph cannot make progress",
                 terminal=True,
             )
+        verification_enabled = any(
+            policy.stage is SupervisorStage.VERIFICATION for policy in self._plan.stages
+        )
+        if verification_enabled and verification.get("decision") != "PASS":
+            return SupervisorDecision(
+                action=SupervisorAction.STOP,
+                next_stage=SupervisorStage.VERIFICATION,
+                reason="every hard verification gate must pass before completion",
+                state_requirements=(PostWorkflowSection.VERIFICATION,),
+            )
         if quality.get("decision") != "PASS":
             return SupervisorDecision(
                 action=SupervisorAction.STOP,
@@ -363,11 +550,36 @@ class PostSupervisor:
                 reason="explicit quality approval is required before completion",
                 state_requirements=(PostWorkflowSection.QUALITY,),
             )
+        design_review_enabled = any(
+            policy.stage is SupervisorStage.DESIGN_REVIEW for policy in self._plan.stages
+        )
+        if design_review_enabled and design_quality.get("decision") != "PASS":
+            return SupervisorDecision(
+                action=SupervisorAction.STOP,
+                next_stage=SupervisorStage.DESIGN_REVIEW,
+                reason="explicit senior design approval is required before completion",
+                state_requirements=(PostWorkflowSection.DESIGN_QUALITY,),
+            )
+        scoring_enabled = any(
+            policy.stage is SupervisorStage.QUALITY_SCORING for policy in self._plan.stages
+        )
+        if scoring_enabled and approval.get("decision") != "PASS":
+            return SupervisorDecision(
+                action=SupervisorAction.STOP,
+                next_stage=SupervisorStage.QUALITY_SCORING,
+                reason="standardized quality thresholds require explicit approval",
+                state_requirements=(PostWorkflowSection.QUALITY_APPROVAL,),
+            )
         return SupervisorDecision(
             action=SupervisorAction.STOP,
             next_stage=None,
             reason="workflow complete and quality approved",
-            state_requirements=(PostWorkflowSection.QUALITY,),
+            state_requirements=(
+                PostWorkflowSection.VERIFICATION,
+                PostWorkflowSection.QUALITY,
+                PostWorkflowSection.DESIGN_QUALITY,
+                PostWorkflowSection.QUALITY_APPROVAL,
+            ),
             terminal=True,
         )
 

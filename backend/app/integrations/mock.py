@@ -11,6 +11,7 @@ from app.modules.posts.providers import (
     ResearchRequest,
     ResearchResponse,
     ResearchResult,
+    StorageObjectNotFoundError,
     VisionRequest,
     VisionResponse,
 )
@@ -61,7 +62,10 @@ class MockEmbeddingProvider:
 
     def _vector(self, text: str) -> tuple[float, ...]:
         digest = hashlib.sha256(text.encode()).digest()
-        return tuple((digest[index] / 127.5) - 1.0 for index in range(self._dimension))
+        return tuple(
+            (digest[index % len(digest)] / 127.5) - 1.0
+            for index in range(self._dimension)
+        )
 
 
 class MockResearchProvider:
@@ -96,6 +100,12 @@ class MockStorageProvider:
         metadata: dict[str, str] | None = None,
     ) -> None:
         self.objects[key] = (data, content_type, dict(metadata or {}))
+
+    async def get(self, *, key: str) -> bytes:
+        stored = self.objects.get(key)
+        if stored is None:
+            raise StorageObjectNotFoundError(f"object '{key}' does not exist")
+        return stored[0]
 
     async def delete(self, *, key: str) -> None:
         self.objects.pop(key, None)

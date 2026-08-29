@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
     Uuid,
 )
@@ -21,6 +23,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.types import JSON
 
 from app.infrastructure.database.base import Base
+from app.infrastructure.database.vector import VECTOR
 
 
 class PostModel(Base):
@@ -287,3 +290,165 @@ class PostExecutionTraceModel(Base):
     )
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PostSemanticMemoryModel(Base):
+    __tablename__ = "post_semantic_memories"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('brand_knowledge', 'approved_creative', 'research_summary', "
+            "'successful_concept', 'visual_reference', 'designer_feedback', "
+            "'rejected_concept', 'rejected_pattern')",
+            name="valid_kind",
+        ),
+        CheckConstraint(
+            "scope_level IN ('brand', 'project', 'category', 'global')",
+            name="valid_scope_level",
+        ),
+        CheckConstraint(
+            "(scope_level = 'brand' AND brand_id IS NOT NULL AND project_id IS NULL "
+            "AND category IS NULL AND brand_neutral = false) OR "
+            "(scope_level = 'project' AND project_id IS NOT NULL AND brand_id IS NULL "
+            "AND category IS NULL AND brand_neutral = false) OR "
+            "(scope_level = 'category' AND category IS NOT NULL AND brand_id IS NULL "
+            "AND project_id IS NULL AND brand_neutral = true) OR "
+            "(scope_level = 'global' AND brand_id IS NULL AND project_id IS NULL "
+            "AND category IS NULL AND brand_neutral = true)",
+            name="valid_scope_selectors",
+        ),
+        CheckConstraint("length(content) > 0", name="non_empty_content"),
+        CheckConstraint("length(content_hash) = 64", name="sha256_content_hash"),
+        CheckConstraint("embedding_dimension = 768", name="embedding_dimension"),
+        UniqueConstraint(
+            "user_id",
+            "scope_level",
+            "scope_key",
+            "kind",
+            "content_hash",
+            name="uq_post_semantic_memories_partition_content",
+        ),
+        Index(
+            "ix_post_semantic_memories_partition",
+            "user_id",
+            "scope_level",
+            "scope_key",
+            "kind",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    scope_level: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    brand_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    project_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    category: Mapped[str | None] = mapped_column(String(100))
+    brand_neutral: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(VECTOR(768), nullable=False)
+    embedding_provider: Mapped[str] = mapped_column(String(100), nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String(300), nullable=False)
+    embedding_dimension: Mapped[int] = mapped_column(Integer, nullable=False, default=768)
+    memory_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+        default=dict,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class PostConversationContextModel(Base):
+    """Accumulated Posts chat context for one conversation."""
+
+    __tablename__ = "post_conversation_contexts"
+    __table_args__ = (
+        CheckConstraint("version > 0", name="positive_context_version"),
+        Index("ix_post_conversation_contexts_scope", "user_id", "project_id", "conversation_id"),
+    )
+
+    conversation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    data: Mapped[dict[str, Any]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class PostBenchmarkReviewModel(Base):
+    """Immutable expert judgement paired with the server-owned AI score."""
+
+    __tablename__ = "post_benchmark_reviews"
+    __table_args__ = (
+        CheckConstraint("human_score >= 1 AND human_score <= 10", name="valid_human_score"),
+        CheckConstraint("ai_score >= 1 AND ai_score <= 10", name="valid_ai_score"),
+        CheckConstraint(
+            "score_difference >= -9 AND score_difference <= 9",
+            name="valid_score_difference",
+        ),
+        CheckConstraint(
+            "expertise IN ('designer', 'marketing_expert', 'creative_director')",
+            name="valid_benchmark_reviewer_expertise",
+        ),
+        CheckConstraint("length(render_checksum) = 64", name="benchmark_render_checksum"),
+        UniqueConstraint(
+            "benchmark_slug",
+            "benchmark_version",
+            "generation_id",
+            "reviewer_user_id",
+            name="uq_post_benchmark_review_submission",
+        ),
+        Index("ix_post_benchmark_reviews_category", "category", "created_at"),
+        Index(
+            "ix_post_benchmark_reviews_scope",
+            "reviewer_user_id",
+            "project_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    benchmark_slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    benchmark_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    generation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("post_generations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reviewer_user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    project_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    expertise: Mapped[str] = mapped_column(String(32), nullable=False)
+    human_score: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
+    ai_score: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
+    ai_dimension_scores: Mapped[dict[str, float]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=False
+    )
+    score_difference: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    feedback: Mapped[str] = mapped_column(Text, nullable=False)
+    dimension_reviews: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=False
+    )
+    render_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

@@ -4,6 +4,7 @@ from uuid import UUID
 from app.shared.conversations.contracts import ConversationRepository
 from app.shared.conversations.domain import (
     Conversation,
+    ConversationKind,
     ConversationNotFoundError,
     ConversationScope,
     Message,
@@ -21,8 +22,19 @@ class ConversationService:
         *,
         scope: ConversationScope,
         title: str | None = None,
+        kind: ConversationKind = ConversationKind.POST,
     ) -> Conversation:
-        return await self._repository.create(scope=scope, title=title)
+        return await self._repository.create(scope=scope, title=title, kind=kind)
+
+    async def list(
+        self,
+        *,
+        scope: ConversationScope,
+        kind: ConversationKind,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[Conversation, ...]:
+        return await self._repository.list(scope=scope, kind=kind, offset=offset, limit=limit)
 
     async def get(
         self,

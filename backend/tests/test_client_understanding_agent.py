@@ -186,6 +186,8 @@ async def test_client_understanding_extracts_lumma_brief_without_strategy_drift(
     ]
     assert UnderstandingField.AUDIENCE.value in brief["missing_fields"]
     assert UnderstandingField.OFFER.value in brief["missing_fields"]
+    # Extraction stays faithful while safe working defaults let the pipeline
+    # continue without interrogating the client for optional strategy detail.
     assert brief["clarification"]["requires_user_input"] is False
     assert brief["clarification"]["questions"] == []
     classifications = {
@@ -335,11 +337,8 @@ async def test_brand_name_alone_cannot_masquerade_as_the_promoted_product() -> N
 
     assert brief["brand"] == "ARKA"
     assert brief["product_service"] is None
-    assert brief["clarification"]["requires_user_input"] is True
-    assert [question["field"] for question in brief["clarification"]["questions"]] == [
-        "product_service",
-        "goal",
-    ]
+    assert brief["clarification"]["requires_user_input"] is False
+    assert brief["clarification"]["questions"] == []
 
 
 def test_supervisor_requires_conversation_context_before_understanding() -> None:
@@ -430,6 +429,7 @@ async def test_supervisor_executes_understanding_and_persists_only_brief(
         trace_recorder=recorder,
     )
 
+    # Missing optional strategy detail no longer blocks a short brief.
     await executor.execute(generation_id=generation.id, job_id=generation.job_id)
 
     async with understanding_session_factory() as session:

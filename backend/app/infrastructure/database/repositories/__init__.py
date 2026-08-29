@@ -11,17 +11,31 @@ from app.infrastructure.database.repositories.execution_traces import (
 from app.infrastructure.database.repositories.generation_jobs import (
     SQLAlchemyGenerationJobRepository,
 )
+from app.infrastructure.database.repositories.post_memory_scope import (
+    SQLAlchemyPostMemoryScopeResolver,
+)
 from app.infrastructure.database.repositories.posts import SQLAlchemyPostRepository
+from app.infrastructure.database.repositories.semantic_memory import (
+    SQLAlchemySemanticMemoryRepository,
+)
 from app.infrastructure.database.repositories.supervisor import (
     SQLAlchemySupervisorCheckpointStore,
+)
+from app.infrastructure.database.repositories.worker_semantic_memory import (
+    WorkerPostMemoryScopeResolver,
+    WorkerSemanticMemoryRepository,
 )
 
 __all__ = [
     "SQLAlchemyAssetRepository",
     "SQLAlchemyConversationRepository",
     "SQLAlchemyPostRepository",
+    "SQLAlchemyPostMemoryScopeResolver",
     "SQLAlchemyGenerationJobRepository",
     "SQLAlchemyExecutionTraceRecorder",
     "SQLAlchemyRepository",
+    "SQLAlchemySemanticMemoryRepository",
+    "WorkerPostMemoryScopeResolver",
+    "WorkerSemanticMemoryRepository",
     "SQLAlchemySupervisorCheckpointStore",
 ]

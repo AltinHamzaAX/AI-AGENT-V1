@@ -5,7 +5,11 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from app.modules.posts.agents.framework import AgentExecutionContext, AgentRuntime
-from app.modules.posts.domain.contracts import AgentDefinition, RetryPolicy
+from app.modules.posts.domain.contracts import (
+    SPECIALIST_TIMEOUT_SECONDS,
+    AgentDefinition,
+    RetryPolicy,
+)
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
 from app.modules.posts.providers import (
     LLMMessage,
@@ -31,7 +35,7 @@ BRAND_PRODUCT_DEFINITION = AgentDefinition(
     input_schema=BrandProductInput,
     output_schema=BrandProductAnalysis,
     allowed_tools=frozenset(),
-    timeout_seconds=120,
+    timeout_seconds=SPECIALIST_TIMEOUT_SECONDS,
     retry_policy=RetryPolicy(max_attempts=2, retry_on_timeout=True, retry_on_error=True),
 )
 
@@ -171,6 +175,19 @@ def _ground_analysis(
         source_facts = _ground_fact_keys(candidate.source_facts, normalized_facts)
         grounded_usps.append(candidate.model_copy(update={"source_facts": source_facts}))
 
+    # A fact may describe the brand at classification time and still be the
+    # factual basis of a product promise (for example, a hotel's location).
+    # Downstream marketing tools only receive ProductAnalysis, so every fact
+    # referenced by a product chain or USP must travel with that object too.
+    referenced_product_facts = {
+        chain.source_fact for chain in grounded_chains
+    } | {
+        fact for candidate in grounded_usps for fact in candidate.source_facts
+    }
+    product_verified_fact_keys = list(
+        dict.fromkeys([*product_fact_keys, *sorted(referenced_product_facts)])
+    )
+
     brand_name = contract.brand
     product_name = contract.product or contract.primary_entity
     return BrandProductAnalysis(
@@ -189,7 +206,7 @@ def _ground_analysis(
             offer=contract.offer,
             feature_benefit_value=grounded_chains,
             usp_candidates=grounded_usps,
-            verified_facts={key: facts[key] for key in product_fact_keys},
+            verified_facts={key: facts[key] for key in product_verified_fact_keys},
             forbidden_claims=list(contract.forbidden_claims),
             constraints=list(contract.constraints),
             required_assets=list(contract.required_assets),

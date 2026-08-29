@@ -23,6 +23,10 @@ class PostGenerationNotFoundError(LookupError):
     pass
 
 
+class ChatMessageNotFoundError(LookupError):
+    """The turn targets a message that is not this conversation's open client turn."""
+
+
 class WorkflowStateConflictError(RuntimeError):
     pass
 
@@ -37,9 +41,25 @@ class SemanticContractHardFailError(RuntimeError):
         self.violations = violations
 
 
+class BenchmarkCaseNotFoundError(LookupError):
+    pass
+
+
+class BenchmarkReviewConflictError(RuntimeError):
+    pass
+
+
+class BenchmarkGenerationNotReadyError(RuntimeError):
+    pass
+
+
 __all__ = [
     "AgentNotFoundError",
     "AgentToolFrameworkError",
+    "BenchmarkCaseNotFoundError",
+    "BenchmarkGenerationNotReadyError",
+    "BenchmarkReviewConflictError",
+    "ChatMessageNotFoundError",
     "DuplicateRegistrationError",
     "InvocationFailedError",
     "InvocationTimeoutError",

@@ -30,3 +30,4 @@ def get_asset_service(
 
 
 AssetServiceDependency = Annotated[AssetService, Depends(get_asset_service)]
+AssetStorageDependency = Annotated[AssetStorage, Depends(get_asset_storage)]

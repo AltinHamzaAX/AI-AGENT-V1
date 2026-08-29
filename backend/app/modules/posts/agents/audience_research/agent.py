@@ -5,7 +5,11 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from app.modules.posts.agents.framework import AgentExecutionContext, AgentRuntime
-from app.modules.posts.domain.contracts import AgentDefinition, RetryPolicy
+from app.modules.posts.domain.contracts import (
+    SPECIALIST_TIMEOUT_SECONDS,
+    AgentDefinition,
+    RetryPolicy,
+)
 from app.modules.posts.domain.semantic_contract import PostSemanticContract
 from app.modules.posts.providers import (
     LLMMessage,
@@ -29,7 +33,7 @@ AUDIENCE_INTELLIGENCE_DEFINITION = AgentDefinition(
     input_schema=AudienceIntelligenceInput,
     output_schema=AudienceIntelligence,
     allowed_tools=frozenset(),
-    timeout_seconds=120,
+    timeout_seconds=SPECIALIST_TIMEOUT_SECONDS,
     retry_policy=RetryPolicy(max_attempts=2, retry_on_timeout=True, retry_on_error=True),
 )
 

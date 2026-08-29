@@ -26,6 +26,7 @@ from app.modules.posts.providers.errors import (
     ProviderQuotaError,
     ProviderRateLimitError,
     ProviderResponseError,
+    StorageObjectNotFoundError,
 )
 
 __all__ = [
@@ -50,6 +51,7 @@ __all__ = [
     "ResearchRequest",
     "ResearchResponse",
     "ResearchResult",
+    "StorageObjectNotFoundError",
     "StorageProvider",
     "VisionProvider",
     "VisionRequest",

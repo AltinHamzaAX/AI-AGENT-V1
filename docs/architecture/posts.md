@@ -387,6 +387,325 @@ later stage inherits the uncertainty rather than only the decisions. Forbidden
 claims fail the whole strategy, and copy, headlines, art direction and design
 remain out of scope: this stage produces the thinking that later stages execute.
 
+## Semantic memory
+
+Posts semantic memory is an internal application service backed by PostgreSQL
+and `pgvector`. It accepts only brand knowledge, approved creatives, research
+summaries, successful concepts, visual references, designer feedback, rejected
+concepts, and rejected patterns. IDs, statuses, timestamps, and operational or
+user-record data remain relational fields or JSON metadata and are never used as
+the vector text. Repeating the same content, kind, and partition is idempotent.
+
+Every record belongs to one exact partition inside a mandatory `user_id`
+boundary: one brand, one project, one normalized category, or the user's global
+partition. Category and global memories must be explicitly brand-neutral.
+Retrieval applies the user, level, and partition key filters in SQL before
+ordering by cosine distance; it never broadens a brand query to another brand,
+category, project, user, or global partition. Callers that want multiple levels
+must request each permitted partition explicitly and merge the results at their
+own application boundary.
+
+Embeddings use a fixed 768-dimensional schema and cosine HNSW index. Provider
+and model identity are retained on every memory. A provider dimension mismatch
+fails before persistence or retrieval instead of writing incompatible vectors.
+## Creative Direction
+
+The Creative Director converts an approved marketing strategy into exploration,
+not a final poster. It reads the marketing strategy, audience intelligence,
+brand analysis, research and semantic contract. All five contract fingerprints
+must agree before the provider is called, and its only workflow write is
+`creative_concept`.
+
+Each run produces three to five creative territories, visual hooks and Big Idea
+candidates. Every territory declares the angle it enters through — emotional
+transformation, visual metaphor, cultural tension, product demonstration or
+brand symbol — and no two may share one, because three renamings of the same
+promise are one route wearing three names. A visual hook carries a symbol and a
+wordless read: what the image says with every word removed. A Big Idea names one
+territory and one hook, states what it adds to each, and lists the further
+executions it would carry; an idea that only supports the post in front of it is
+an advertisement.
+
+The chain from audience tension to marketing angle, territory, Big Idea and hook
+is checked link by link. Each link must interpret the one above it and introduce
+something that step did not contain, so a chain of synonyms cannot pass as
+reasoning.
+
+Scoring is held to the same standard. Each candidate is scored one to ten on the
+eight selection dimensions: strategy fit, audience fit, brand fit, originality,
+clarity, visual potential, platform fit and production feasibility. Ticket 24's
+territory differentiation, claim safety and concept-hook alignment remain
+quality gates rather than silently changing the ranking. Every candidate names
+its own weakness. A flawless card and two identical selection cards are both
+rejected: an evaluation that separates nothing decides nothing. The application
+ranks by the eight-dimension total and deterministic dimension priority, so the
+winner is always separated by a judgement rather than by list position.
+
+The persisted output publishes `winning_concept` plus every non-winner under
+`rejected_concepts`, retaining rank, total score, weakness and a comparison-based
+rejection reason. Before generation, the stage retrieves only project-scoped
+`rejected_concept` semantic memories and supplies them as anti-repetition
+context. After selection, every losing route is stored through the semantic
+memory service; concept language is embedded, while generation/candidate IDs and
+scorecards stay JSON metadata. Worker retries are idempotent because the same
+partition, kind and semantic content share one memory record.
+
+Quality gates reject renamed versions of the same route, close paraphrases of
+the approved strategy wording, stock product shots offered as hooks, and
+audience-facing advertising copy disguised as a concept. Unsupported absolute or
+numeric claims, forbidden claims, identity replacement and competitor copying
+fail closed. Sanitization after a local-model repair drops whole sentences
+rather than deleting words in place, because a field edited token by token comes
+back safe and meaningless; a field with nothing sayable left comes back empty
+and fails the run instead of shipping a placeholder. Every repaired output faces
+the full bar again, including the gate, so nothing is waived for being a repair.
+Small serialization drift, such as detached scorecards or renamed fields, is
+normalized without rewriting creative content or choosing a territory's angle
+for the provider.
+
+This is the first stage that invents rather than extracts. Every earlier stage
+answers to evidence placed in front of it, which a small model does well; a Big
+Idea has nothing to read off. `CREATIVE_LLM_MODEL` points this stage at a
+stronger model, and left empty every stage shares `LLM_MODEL`. The bundle
+carries the second provider so the choice stays a deployment decision: no agent
+selects its own model, and traces name the model from the response either way.
+
+The boundary to downstream specialists is explicit. Split screens, overlays,
+animations, logo or tagline placement, headlines, captions, CTA copy, typography,
+dimensions, image prompts and final posters are not Creative Director output.
+The agent has no tools, approval capability or mutation capability; Copywriter,
+Art Director and production stages remain responsible for execution.
+
+## Copywriting
+
+`CopywriterAgent` runs after concept selection and writes only the `copy` workflow
+section. It receives the approved marketing strategy, winning concept, brand
+voice, platform, offer and immutable semantic contract. Rejected concepts are
+deliberately excluded from its source: they inform future anti-repetition, not
+the copy for the selected route. Strategy, concept, brand and contract
+fingerprints must agree, while platform and offer must exactly match the
+semantic contract before a provider is called.
+
+The provider returns only headline, subheadline, supporting copy, optional offer
+copy, CTA, caption and optional hashtags. The application owns the final quality
+record and checks clarity, tone, length, grammar, claim validity, text density
+and mobile readability. Headline and CTA word counts, sentence length, caption
+limits, overlay density, capitalization, punctuation and hashtag shape are
+deterministic gates rather than model self-assessment.
+
+Approved offer wording is preserved exactly. Numeric claims, prices,
+percentages, guarantees, free benefits, superlatives, availability promises and
+forbidden claims must already exist upstream; otherwise the complete output is
+repaired once and then fails closed. Copywriting cannot emit layout, typography,
+logo placement, image prompts or any other Art Director or production field.
+
+## Art direction
+
+`ArtDirectorAgent` runs after copywriting and asset intelligence, and writes only
+the `art_direction` workflow section. It receives the winning concept, approved
+copy, verified brand analysis, asset policies, platform and immutable semantic
+contract. All upstream fingerprints must agree before the provider is called.
+Rejected concepts are excluded so the selected route remains the only creative
+source of truth.
+
+The output defines focal point, composition, ordered visual hierarchy, product
+dominance, negative space, photography, lighting, typography, color, graphic
+language, CTA treatment and protected logo region. Product leads the hierarchy;
+headline, approved offer and CTA follow; logo closes it. Deterministic gates
+enforce hierarchy, concept alignment, asset fidelity, copy fit and mobile
+readability. Product dominance must respect both global bounds and any supplied
+asset-policy range. Unsupported color codes and instructions that replace or
+regenerate protected product or logo identity fail closed after one full repair.
+
+This stage describes production-ready visual intent but does not generate an
+image, rewrite copy, create SVG/CSS or emit a final layout. It has no tools and
+cannot mutate assets.
+
+## Design specification
+
+`DesignSpecAgent` is the typed compiler between Art Director and Composer. It
+reads the approved art direction, copy and semantic contract, then writes only
+the `design_spec` workflow section. Composer-facing code must consume this
+contract and must not interpret the Art Director's free-form prose directly.
+
+DesignSpec schema version `1.0` represents canvas and safe-area dimensions in
+pixels, grid columns/rows/gutters/baseline, named product/headline/offer/CTA/logo
+regions, typography roles, color tokens, graphic elements, and production
+directions for photography, lighting and background. Unknown fields are
+rejected. Text and logo regions must fit the safe area; all geometry must fit
+the canvas; and offer geometry and typography exist only when approved offer
+copy exists. The semantic-contract fingerprint is attached by the application,
+not supplied by the model.
+
+Invalid structured output receives one complete repair pass and then fails
+closed. The compiler emits neither rendered assets nor CSS, SVG, image prompts
+or final composition, and it has no tools.
+
+## Layout engine
+
+The deterministic design toolset converts a validated `DesignSpec` into a
+versioned `LayoutPlan`. `SafeAreaEngine` clamps protected content,
+`GridEngine` produces concrete track lines and snaps bounds, `SpacingEngine`
+enforces baseline rhythm, and `VisualHierarchyPlanner` assigns stable priority
+and visual flow. `LayoutEngine` coordinates those tools without an LLM call or
+mutation of the source specification.
+
+Every placement exposes pixel `x`, `y`, `width`, `height`, alignment, priority,
+z-index and machine-readable constraints. The plan also records spacing
+relations and measurable alignment, balance, whitespace, scale, rhythm,
+proximity, Gestalt grouping, focal point and visual flow. Product may use the
+canvas edge; headline, offer, CTA and logo remain inside the safe area. This is
+layout planning only and does not render or generate production assets.
+
+## Typography engine
+
+Typography is deterministic and never delegated to an image model. The
+`TypographyEngine` combines approved copy, typography roles, color tokens and
+the concrete LayoutPlan. It outputs exact text blocks with family token, weight,
+font size, line height, letter spacing, line breaks, maximum lines, measured
+text width, alignment, priority, bounds, contrast ratio and fit status.
+
+Headline, subheadline and supporting copy share the planned headline group;
+offer, CTA and optional legal text use dedicated regions. The fitter preserves
+copy exactly and reduces size only down to role-specific readability floors.
+WCAG-style contrast thresholds are applied to normal and large text. Overflow,
+unavailable fonts, overlap, clipping, unreadable contrast and text outside the
+safe area are hard failures. The engine is pure and repeatable: it calls no
+provider, performs no rendering and does not mutate DesignSpec or LayoutPlan.
+
+## Color and contrast engine
+
+`ColorContrastEngine` resolves the DesignSpec color tokens into dominant,
+secondary, accent, background, text and CTA roles. Tokens marked as brand colors
+must exist in an explicit approved brand palette; colors marked neutral are
+checked for low chroma so an invented color cannot bypass brand validation.
+
+Text/background and CTA contrast use deterministic relative-luminance ratios,
+and remain consistent with the TypographyPlan. Product color samples are
+compared with the background; an unusably low separation is a hard failure,
+while a marginal result requires an approved neutral separation treatment. The
+engine also reports a bounded visual-harmony score and preserves the objective
+and mood that the palette is expected to support.
+
+Gradients are absent by default. A gradient is accepted only when explicitly
+approved, composed solely of approved/resolved palette colors, and its reason is
+grounded in the supplied objective or mood. “Looks modern” is not a valid design
+reason. The engine is deterministic and invokes no image or text provider.
+
+## Generation planning
+
+`GenerationPlanner` is the deterministic gate before any image-provider call.
+It inventories classified assets and explicitly records what is available,
+missing, identity-protected and permitted to be generated. The stage reads the
+semantic contract, DesignSpec and asset policies, then writes only the
+`generation_plan` workflow section.
+
+When a useful focal visual and background already exist, the decision is
+`COMPOSE_ONLY` with zero image calls. A useful visual without a background yields
+`GENERATE_BACKGROUND`; the original product and logo remain composition assets.
+When no useful visual exists, `GENERATE_SCENE` creates only unbranded scene
+context. Generated promotional text, headline, offer/price, CTA, logos,
+watermarks and replacement products are prohibited in every generation task.
+
+The plan records the estimated image calls and cost tier, making fidelity,
+latency and cost consequences visible before production. Planning invokes no AI
+provider and is repeatable for identical state.
+
+## Image prompt builder and scene generation
+
+`ImagePromptBuilder` compiles the immutable semantic contract, selected creative
+concept, approved art direction, `DesignSpec`, asset policies and generation
+plan into a provider-neutral `ScenePrompt`. All inputs must carry one contract
+fingerprint. Protected product and logo policies become exact quiet-region
+reservations from the design geometry; asset identifiers and customer-facing
+brand, product, offer and CTA strings never enter the provider prompt.
+
+The positive prompt asks only for a scene or background plate: environment,
+lighting, photography, atmosphere and texture. A complete negative prompt
+always prohibits readable promotional text, fake logos, fake branding, fake
+prices or offers, CTA, UI and watermarks. Final copy, prices, CTA and logos are
+therefore left to deterministic composition rather than the image model.
+
+`ProductionStageHandler` skips the provider for `COMPOSE_ONLY`. Otherwise it
+calls the provider through the existing interface, rejects empty, unreadable,
+unsafe, MIME-mismatched or incorrectly sized output, and persists validated
+bytes through `StorageProvider`. Workflow state receives JSON-only artifact
+metadata: deterministic storage key, checksum, dimensions, provider/model and
+prompt fingerprint. The key is stable for a generation and prompt, so worker
+retry overwrites the same artifact instead of creating duplicates. Provider or
+storage failures remain stage failures for the Supervisor retry policy; no
+invalid artifact metadata is committed.
+
+## Product preservation and image editing
+
+A generated stand-in for a real vehicle, package or logo is not a rendering
+mistake; it is a false claim about what the customer sells. `ProductPreservationPipeline`
+is therefore built to be incapable of one. Its nine tools — masking, background
+removal, crop, perspective handling, lighting adaptation, edge cleanup, scale,
+placement and shadow integration — derive the subject from the uploaded pixels.
+Resampling, exposure adjustment and the external shadow necessarily create
+derived pixels, but the pipeline cannot generate or substitute the promoted
+subject and has no image provider to ask.
+
+Permission is answered before a single byte is decoded. An asset carrying
+`preserve_identity` can never be swapped for another asset or stood in for by
+generated bytes, and the same refusal applies whenever the policy has not
+granted `allow_replace` or `allow_generation` — so a vehicle, product,
+packaging or logo nobody authorised for replacement does not become replaceable
+because that one flag happens to be off. Cropping needs `allow_crop`. Each
+refusal carries a `PreservationFailure` code, raised from the pipeline rather
+than from a validator, because pydantic would otherwise bury the code a caller
+needs to tell "this may not be replaced" from "these bytes are not an image".
+Even when policy permits replacement, selection of the replacement belongs to
+the asset-selection boundary; this pipeline refuses to silently ignore or
+pretend to execute such a request.
+
+The edits are bounded to what keeps a product recognisable. Scaling preserves
+aspect ratio, since a squashed car is a different car. Lighting adapts
+brightness within a tenth either way and never touches hue. Perspective
+correction straightens a photo taken at a slight angle and stops well short of
+restyling. Background removal floods inward from the canvas edges, so colour
+the product encloses — a window, a label panel — keeps its pixels. The flood-fill
+reachability marker uses alpha rather than a possible RGB product colour, so a
+near-black product is not mistaken for the backdrop. An asset masked away to
+nothing fails rather than composing an invisible product.
+When corner colours indicate a complex photographic gradient, deterministic
+background removal fails with `BACKGROUND_REMOVAL_UNSAFE` instead of risking
+damage to the promoted subject. The caller must retain the background or
+provide a trusted, source-sized mask; a dedicated segmentation adapter can be
+introduced later without weakening this preservation-first fallback.
+
+The result reports each of the nine operations exactly once, the source and
+output digests that let a later stage prove the pixels descend from the upload,
+and the share of the canvas the asset actually covers, measured through its
+alpha rather than its bounding box. Structured fidelity evidence records why
+the result can claim descent from the upload; the policy flag itself is never
+used as evidence. `usage_assertion()` turns that into the
+`AssetUsageAssertion` the existing policy validator consumes: the pipeline
+states what it did and lets `evaluate_asset_usage` decide whether the policy was
+satisfied, instead of certifying itself.
+## Semantic memory
+
+Posts semantic memory is an internal application service backed by PostgreSQL
+and `pgvector`. It accepts only brand knowledge, approved creatives, research
+summaries, successful concepts, visual references, designer feedback, rejected
+concepts, and rejected patterns. IDs, statuses, timestamps, and operational or
+user-record data remain relational fields or JSON metadata and are never used as
+the vector text. Repeating the same content, kind, and partition is idempotent.
+
+Every record belongs to one exact partition inside a mandatory `user_id`
+boundary: one brand, one project, one normalized category, or the user's global
+partition. Category and global memories must be explicitly brand-neutral.
+Retrieval applies the user, level, and partition key filters in SQL before
+ordering by cosine distance; it never broadens a brand query to another brand,
+category, project, user, or global partition. Callers that want multiple levels
+must request each permitted partition explicitly and merge the results at their
+own application boundary.
+
+Embeddings use a fixed 768-dimensional schema and cosine HNSW index. Provider
+and model identity are retained on every memory. A provider dimension mismatch
+fails before persistence or retrieval instead of writing incompatible vectors.
+
 ## Agent framework and tool registry
 
 The internal agent framework is deny-by-default. `AgentDefinition` declares a
@@ -416,12 +735,199 @@ response contracts include provider/model identity where relevant but contain no
 SDK-specific objects. Technical adapters live under `app/integrations` or
 `app/infrastructure`; provider SDKs and HTTP response shapes never enter agents.
 
+A vision request may carry the JSON Schema its answer must satisfy. Adapters
+that support constrained decoding enforce it during generation; the rest ignore
+it and rely on prompt shaping, so the schema is a guarantee where it can be one
+and never a requirement on the port. This is what makes a structured vision gate
+affordable on a local model: asked in prose, a reasoning vision model spends an
+order of magnitude more tokens on its private trace than on the answer, and the
+gate exhausts its request timeout before replying.
+
 The application composition root selects each adapter independently from
 environment configuration. Current adapters support Ollama for text, vision,
 and embeddings; Hugging Face Inference Providers for image generation; Tavily
 for research; and S3-compatible storage for MinIO/S3. A deterministic mock exists
 for every port, allowing workflow tests to run without network calls or secrets.
 Unknown or incomplete configuration fails closed with safe errors.
+
+## Hard verification gates
+
+Twelve gates stand between a finished render and the client, and none of them is
+a score: `correct_brand`, `correct_product`, `correct_logo`, `correct_offer`,
+`correct_spelling`, `required_facts_present`, `required_assets_present`,
+`forbidden_claims_absent`, `fake_branding_absent`, `unwanted_text_absent`,
+`correct_dimensions` and `asset_fidelity`. One failure sets the decision to
+BLOCKED and the Supervisor terminates the workflow, whatever the marketing and
+design reviews concluded. The gates run directly after composition, before
+anything scores the post, so a blocked render never costs a review and no score
+exists to be pointed at afterwards.
+
+Every gate is decided in policy from the semantic contract, the approved copy,
+the design spec and the draft's own component record. The vision model is a
+witness: it enumerates the legible strings, the brand identities and the
+depicted products, and never judges whether the post is acceptable. Constrained
+decoding holds it to that shape. The same inputs therefore always yield the same
+verdict, and a blocked post carries the evidence each gate read.
+
+Text gates compare the rendered strings against the approved copy rather than
+against a dictionary, which catches truncation, substitution and dropped glyphs
+in any language. Evidence read off the image is matched tolerantly, so a small
+model's misreading of approved copy cannot block a post while genuinely foreign
+text still does. This stage never requests a revision: a hard gate that could be
+negotiated with would be a score with extra steps.
+
+## Quality scoring and approval
+
+After the hard gates, Marketing Critic and Senior Design Critic have completed,
+the Quality Scoring Engine normalizes their evidence and the selected creative
+concept scorecard into twelve dimensions: marketing effectiveness, creative
+concept, composition, visual hierarchy, typography, color, brand fit, product
+fidelity, audience fit, platform fit, differentiation and overall polish. It is
+a deterministic aggregator, not another LLM opinion. Every score records its
+source and evidence, and all reports must identify the same semantic contract
+and exact render.
+
+Thresholds, critical dimensions and dimension weights are configuration. The
+default approval bar is overall `>= 9.0`, each critical dimension `>= 8.5`, each
+other dimension `>= 8.0`, and every hard verification gate `PASS`. A high
+average cannot compensate for a failed dimension or hard gate.
+
+The decision is operational rather than cosmetic: `MUTATE` targets strategy or
+copy, `RECOMPOSE` targets deterministic layout/rendering, `REGENERATE` returns
+to the creative concept/scene path, `REJECT` terminates on a hard-gate failure,
+and `PASS` is the only completion certificate. Non-terminal decisions append a
+targeted revision record containing keep/change scope, reason, recommended
+action and the render checksum, so the Supervisor invalidates only the affected
+stage and its dependants.
+
+## Revision Director and targeted revision
+
+All quality layers submit typed findings to one deterministic Revision Director
+instead of writing ad-hoc revision dictionaries. It routes copy to Copywriter,
+typography to Typography Engine through DesignSpec, layout to Art Director/Layout
+Engine, color to Color Engine, scene contamination to Scene Generator, product
+fidelity to the Asset Pipeline, strategy to Marketing Strategist, and concept
+defects to Creative Director. When findings span multiple owners, the earliest
+responsible stage wins so its downstream dependants are rebuilt once.
+
+Every persisted instruction has a schema version, unique revision ID, iteration,
+status, requester, responsible component, exact target stage and render
+reference. `keep`, `change`, `why` and `action` are mandatory non-empty arrays;
+keep/change overlap is invalid. The Director derives keep scope from Supervisor
+dependencies, preserving approved truth and unaffected work while excluding all
+outputs invalidated by the selected target. Product correction changes derived
+asset state while preserving the immutable product and semantic contract.
+
+Identical pending instructions are idempotent. A completed correction followed
+by a later recurrence receives a new iteration and revision ID. The Supervisor
+marks only the latest pending instruction completed when its exact target stage
+finishes, invalidates that stage and its dependants, and sends the rebuilt draft
+through verification and scoring again.
+
+## Conversational Posts UI and section isolation
+
+The web application exposes two explicit workspaces: `/posts` and
+`/campaigns`, each with a conversation detail route ending in
+`/:conversationId`. A conversation persists a required `post` or `campaign`
+kind. Section-specific conversation APIs create the route's kind on the server,
+filter history by that kind and return `404` when an identifier is opened from
+the other section. The generic conversation boundary also requires an explicit
+type when listing. Posts additionally reject campaign conversations as Post
+sources, so route state cannot bypass the domain boundary.
+
+The Posts workspace supports messages, multiple image previews and uploads,
+generation, backend job polling, Supervisor-derived progress, terminal failure
+reporting and completed artifact metadata. Later revision requests stay in the
+same conversation and create another generation attempt for the same Post
+during the browser session. The UI reports completion only after the persisted
+generation job is complete; it never substitutes animated progress for backend
+state. Campaign conversations use their own API prefix and isolated client
+state, while generation remains deliberately unavailable until the Campaign
+Engine supplies its public boundary.
+
+## Conversational assistant and intent routing
+
+Every client message runs one pipeline: classify the intent, fold the newly
+stated facts into the conversation's memory, decide the single action the turn
+may perform, perform it, and answer. A message is never an implicit order to
+generate.
+
+The classifier is a structured provider call that returns one of
+`GENERAL_CONVERSATION`, `MARKETING_QUESTION`, `MISSING_INFORMATION`,
+`GENERATE_POST`, `REVISE_POST` or `CLARIFICATION`, together with the facts the
+message carries. It proposes; `ChatIntentRouter` decides. Unambiguous wording
+promotes a turn to generation or revision regardless of the classification, a
+question never generates, revision requires an existing generation, and
+generation requires the facts `ClarificationEngine` marks critical - otherwise
+the turn asks the missing question instead. A second explicit order proceeds on
+a goal inferred from the promoted subject, recorded as inferred so no later
+stage reads it as a client statement.
+
+Model output is narrowed before it is stored. Named entities (business, brand,
+product, location, platform, offer) survive only when they appear in the
+client's own words; interpretive readings (goal, audience, market, CTA intent,
+style, constraints) are kept as written. A platform outside the known set is
+dropped rather than stored, a stated business outcome is recovered
+deterministically from the message when the model omits it, and the client's
+language is decided from their own text because it selects the wording of every
+clarification question.
+
+`post_conversation_contexts` persists one accumulated context per conversation:
+the understood facts, uploaded assets, previous requests, generated attempts and
+revision instructions. The client is never asked twice for the same fact. When a
+turn starts the workflow, that context seeds the generation's
+`conversation_context` section - conversation history, latest message,
+attachments and verified project context - so the Supervisor's first stage
+receives the brief the chat built. A revision starts a new attempt on the same
+Post and records which generation it revises.
+
+The whole turn runs in one transaction: a failure after a generation was
+requested leaves neither the message nor the queued work behind. Classification
+uses the extraction model and the reply uses the creative model, so a deployment
+can pay for conversational quality without paying for it on every classification.
+
+## Worker composition and pipeline coverage
+
+`app/workers/pipeline.py` is the one place that assembles the durable pipeline:
+the SQLAlchemy checkpoint store, every specialist stage handler this deployment
+can run, and the execution trace recorder, into the `PostSupervisorExecutor`
+that the worker process drives. The worker entry point claims one job at a
+time, honours a stop signal between jobs so a running generation keeps its
+lease, and reports its identity on startup.
+
+Composition is the only stage whose dependencies are tenant-scoped. The asset
+library is tenant-gated and a worker serves every tenant, so the composition
+resolver reads the owning scope from the generation being composed instead of
+being fixed when the pipeline is assembled.
+
+A stage absent from the registry is never silently skipped. The Supervisor
+stops with `stage_handler:<stage>` as the missing input and the job ends
+non-retryable, which is how an unfinished pipeline reports itself rather than
+producing a partial post. Every planned stage is registered, and a test asserts
+it, so a stage added to the plan without a handler fails the suite instead of
+surfacing later as a stalled generation.
+
+## What the client must state
+
+The semantic contract requires a non-null audience and CTA intent, and two
+stages enforce that: audience research grounds every segment in
+`semantic_contract.audience`, and marketing strategy grounds its call to action
+in `semantic_contract.cta_intent` as evidence distinct from the goal. Neither
+can be researched into existence - research deepens a declared audience rather
+than inventing one - so the clarification policy classifies both as critical
+alongside the goal and the promoted subject. Those four facts are what the
+assistant asks for before a generation may start.
+
+Platform and language stay inferable. They shape delivery rather than any claim
+about the client's business, so the semantic contract stage falls back to a
+declared working value when the client never named one. Everything else in the
+contract is optional and passes through exactly as the brief recorded it.
+
+The stage itself is deterministic and calls no model: it maps the brief onto the
+contract, derives the promoted subject in the clarification policy's own order,
+carries stated facts (offer, location, product) as required facts, and marks
+identity assets as required. A brief that reaches it without a fact no stage can
+derive stops the job non-retryably and names the fact.
 
 ## Observability and execution tracing
 

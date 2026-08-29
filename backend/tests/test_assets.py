@@ -16,6 +16,7 @@ from app.dependencies.assets import get_asset_storage
 from app.infrastructure.database.base import Base
 from app.infrastructure.database.session import get_db_transaction
 from app.main import app
+from app.modules.posts.providers import StorageObjectNotFoundError
 from app.shared.assets.contracts import AssetRepository
 from app.shared.assets.domain import AssetRole, AssetValidationError
 from app.shared.assets.service import AssetService
@@ -44,6 +45,12 @@ class FakeAssetStorage:
         if self.fail_upload:
             raise RuntimeError("storage unavailable")
         self.objects[key] = (data, content_type, metadata or {})
+
+    async def get(self, *, key: str) -> bytes:
+        stored = self.objects.get(key)
+        if stored is None:
+            raise StorageObjectNotFoundError(f"object '{key}' does not exist")
+        return stored[0]
 
     async def delete(self, *, key: str) -> None:
         self.objects.pop(key, None)

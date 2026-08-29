@@ -119,6 +119,11 @@ class TracedStorageProvider:
             ),
         )
 
+    async def get(self, *, key: str) -> bytes:
+        return await self._trace.call(
+            "storage.get", {"key": key}, lambda: self._provider.get(key=key)
+        )
+
     async def delete(self, *, key: str) -> None:
         await self._trace.call(
             "storage.delete", {"key": key}, lambda: self._provider.delete(key=key)
@@ -208,6 +213,11 @@ def trace_provider_bundle(
     )
     return ProviderBundle(
         llm=TracedLLMProvider(bundle.llm, trace),
+        creative_llm_override=(
+            None
+            if bundle.creative_llm_override is None
+            else TracedLLMProvider(bundle.creative_llm_override, trace)
+        ),
         vision=TracedVisionProvider(bundle.vision, trace),
         image=TracedImageProvider(bundle.image, trace),
         embedding=TracedEmbeddingProvider(bundle.embedding, trace),

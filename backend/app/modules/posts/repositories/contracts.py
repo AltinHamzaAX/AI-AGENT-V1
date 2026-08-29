@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from typing import Any, Protocol
 from uuid import UUID
 
+from app.modules.posts.domain.chat import ConversationContext
 from app.modules.posts.domain.entities import (
     GenerationArtifact,
     Post,
@@ -14,6 +15,12 @@ from app.modules.posts.domain.enums import (
     PostWorkflowSection,
 )
 from app.modules.posts.domain.jobs import GenerationJob
+from app.modules.posts.domain.memory import (
+    SemanticMemory,
+    SemanticMemoryKind,
+    SemanticMemoryMatch,
+    SemanticMemoryScope,
+)
 from app.modules.posts.domain.observability import ExecutionTrace
 from app.modules.posts.domain.state import (
     PostGenerationState,
@@ -39,6 +46,13 @@ class PostRepository(Protocol):
     ) -> Post: ...
 
     async def get_post(self, *, post_id: UUID, scope: PostScope) -> Post | None: ...
+
+    async def find_post_by_conversation(
+        self,
+        *,
+        conversation_id: UUID,
+        scope: PostScope,
+    ) -> Post | None: ...
 
     async def create_generation(
         self,
@@ -151,6 +165,35 @@ class GenerationJobRepository(Protocol):
         lease_seconds: int,
     ) -> GenerationJob | None: ...
 
+
+class SemanticMemoryRepository(Protocol):
+    @property
+    def embedding_dimension(self) -> int: ...
+
+    async def upsert(
+        self,
+        *,
+        memory_id: UUID,
+        scope: SemanticMemoryScope,
+        kind: SemanticMemoryKind,
+        content: str,
+        content_hash: str,
+        embedding: tuple[float, ...],
+        embedding_provider: str,
+        embedding_model: str,
+        metadata: dict[str, Any],
+    ) -> SemanticMemory: ...
+
+    async def search(
+        self,
+        *,
+        scope: SemanticMemoryScope,
+        query_embedding: tuple[float, ...],
+        kinds: tuple[SemanticMemoryKind, ...],
+        limit: int,
+        min_similarity: float,
+    ) -> Sequence[SemanticMemoryMatch]: ...
+
     async def complete(self, *, job_id: UUID, worker_id: str) -> GenerationJob | None: ...
 
     async def fail(
@@ -162,3 +205,20 @@ class GenerationJobRepository(Protocol):
         retryable: bool,
         retry_delay_seconds: int,
     ) -> GenerationJob | None: ...
+
+
+class PostConversationContextRepository(Protocol):
+    async def get(
+        self,
+        *,
+        conversation_id: UUID,
+        scope: PostScope,
+    ) -> ConversationContext | None: ...
+
+    async def save(
+        self,
+        *,
+        conversation_id: UUID,
+        scope: PostScope,
+        context: ConversationContext,
+    ) -> ConversationContext: ...

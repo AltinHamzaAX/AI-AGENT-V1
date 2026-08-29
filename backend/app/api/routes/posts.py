@@ -1,8 +1,9 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, Response, status
 
+from app.dependencies.assets import AssetStorageDependency
 from app.dependencies.posts import PostScopeDependency, PostsServiceDependency
 from app.modules.posts.domain.enums import PostWorkflowSection
 from app.modules.posts.domain.exceptions import (
@@ -151,6 +152,38 @@ async def list_generation_artifacts(
     except PostGenerationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Post generation not found") from exc
     return [GenerationArtifactRead.from_domain(artifact) for artifact in artifacts]
+
+
+@router.get("/{post_id}/generations/{generation_id}/artifacts/{artifact_id}/content")
+async def get_generation_artifact_content(
+    post_id: UUID,
+    generation_id: UUID,
+    artifact_id: UUID,
+    scope: PostScopeDependency,
+    service: PostsServiceDependency,
+    storage: AssetStorageDependency,
+) -> Response:
+    """Return scoped artifact bytes for authenticated chat previews."""
+    try:
+        artifacts = await service.list_artifacts(
+            generation_id=generation_id,
+            post_id=post_id,
+            scope=scope,
+        )
+    except PostGenerationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Post generation not found") from exc
+    artifact = next((item for item in artifacts if item.id == artifact_id), None)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="Generation artifact not found")
+    try:
+        content = await storage.get(key=artifact.storage_key)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Artifact storage is unavailable") from exc
+    return Response(
+        content=content,
+        media_type=artifact.mime_type,
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 
 
 @router.get(

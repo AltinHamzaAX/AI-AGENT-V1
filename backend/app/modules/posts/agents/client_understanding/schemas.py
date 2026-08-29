@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
+from app.modules.posts.domain.clarification import ClarificationPlan
 from app.modules.posts.domain.enums import UnderstandingField
 from app.shared.assets.domain import AssetRole
 
@@ -113,6 +114,11 @@ class ClientUnderstandingBrief(BaseModel):
     constraints: list[str] = Field(default_factory=list, max_length=100)
     assets: list[UnderstoodAsset] = Field(default_factory=list, max_length=50)
     missing_fields: list[UnderstandingField] = Field(default_factory=list)
+    #: The plan travels with the brief it was derived from: the Supervisor reads
+    #: it to decide whether to stop for the client, and every later stage reads
+    #: the same section back. Leaving it undeclared made this model reject the
+    #: very section its own stage writes.
+    clarification: ClarificationPlan | None = None
 
 
 class ClientUnderstandingLLMOutput(BaseModel):

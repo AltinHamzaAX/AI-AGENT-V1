@@ -10,6 +10,14 @@ class ProviderResponseError(ProviderError):
     pass
 
 
+class StorageObjectNotFoundError(ProviderError):
+    """The requested object key does not exist in the bucket.
+
+    Distinct from a transport failure: retrying cannot make a missing object
+    appear, so callers should treat it as a data problem rather than an outage.
+    """
+
+
 class ProviderRateLimitError(ProviderError):
     """Too many requests for now. Retrying later is the correct response."""
 
@@ -30,4 +38,5 @@ __all__ = [
     "ProviderQuotaError",
     "ProviderRateLimitError",
     "ProviderResponseError",
+    "StorageObjectNotFoundError",
 ]
