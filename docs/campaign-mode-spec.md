@@ -415,6 +415,10 @@ and the system can:
 
 **Status: Completed**
 
+## Architecture Diagram
+
+![Campaign Mode Architecture](./diagrams/campaign-mode-architecture.png)
+
 This section defines how the system will technically satisfy the Final Requirements.
 
 Planned architecture areas:
