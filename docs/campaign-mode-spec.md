@@ -676,3 +676,871 @@ Export requires a valid Campaign Plan.
 Generated ZIP packages do not need permanent database storage in V1. They can be generated on demand from persisted campaign data.
 
 Export failures must not modify or destroy existing Campaign, Brief or Plan data.
+
+# 3. Schemas
+
+**Status: Completed**
+
+This section defines the structured data contracts used by Campaign Mode.
+
+## 3.1 Campaign Brief Schema
+
+The Campaign Brief represents the structured campaign context collected gradually from the user's conversation.
+
+Fields:
+
+- `business`: string | null
+- `product_or_service`: string | null
+- `goal`: string | null
+- `audience`: string | null
+- `location`: string | null
+- `offer`: string | null
+- `value_proposition`: string | null
+- `channels`: list[string] | null
+- `budget_amount`: number | null
+- `budget_currency`: string | null
+- `duration`: string | null
+- `brand_tone`: string | null
+- `constraints`: list[string] | null
+
+Campaign Brief fields may remain null while information is being collected.
+
+Readiness should not require every field to be populated.
+
+Required before generation:
+
+- `business` or `product_or_service`
+- `goal`
+- `audience`
+
+Contextually important:
+
+- `location`
+- `duration`
+
+Optional or recommended:
+
+- `offer`
+- `value_proposition`
+- `channels`
+- `budget_amount`
+- `budget_currency`
+- `brand_tone`
+- `constraints`
+
+Unknown optional information must not block Campaign Plan generation.
+
+AI recommendations must not be presented as confirmed business facts.
+
+## 3.2 Campaign Plan Schema
+
+The Campaign Plan is the structured strategic output generated from a sufficiently complete Campaign Brief.
+
+Main fields:
+
+- `campaign_name`: string
+- `executive_summary`: string
+- `objective`: object
+- `target_audience`: object
+- `offer`: string | null
+- `value_proposition`: string
+- `positioning`: string
+- `key_message`: string
+- `strategy`: string
+- `channels`: list[ChannelStrategy]
+- `content_direction`: list[ContentDirection]
+- `budget_allocation`: BudgetAllocation | null
+- `timeline`: list[TimelinePhase]
+- `kpis`: list[KPI]
+- `assumptions_or_risks`: list[string]
+- `next_steps`: list[string]
+
+Supporting nested structures:
+
+### ChannelStrategy
+
+- `name`: string
+- `purpose`: string
+- `reason`: string
+
+### ContentDirection
+
+- `idea`: string
+- `purpose`: string
+
+### BudgetAllocation
+
+- `total`: number
+- `currency`: string
+- `items`: list[BudgetItem]
+
+### BudgetItem
+
+- `channel`: string
+- `amount`: number
+- `reason`: string
+
+### TimelinePhase
+
+- `period`: string
+- `phase`: string
+- `objective`: string
+- `activities`: list[string]
+
+### KPI
+
+- `name`: string
+- `purpose`: string
+
+The Campaign Plan should distinguish confirmed campaign facts from AI-generated strategic recommendations.
+
+The timeline must reflect the campaign duration defined in the Campaign Brief.
+
+Budget allocation must respect the confirmed campaign budget when one is provided.
+
+`content_direction` defines recommended content direction for the campaign. Direct integration with Posts Mode is outside the Campaign Mode V1 scope.
+
+## 3.3 API Request and Response Schemas
+
+Primary V1 API schemas include:
+
+### CreateCampaignRequest
+
+- `conversation_id`
+
+### CreateCampaignResponse
+
+- `id`
+- `conversation_id`
+- `status`
+
+### CampaignMessageRequest
+
+- `message`: string
+
+### CampaignMessageResponse
+
+- `reply`
+- `status`
+- `brief`: CampaignBrief
+
+### CampaignDetailResponse
+
+- `id`
+- `conversation_id`
+- `status`
+- `brief`: CampaignBrief
+- `plan_available`
+
+### GenerateCampaignResponse
+
+- `status`
+- `plan`: CampaignPlan
+
+### CampaignPlanResponse
+
+Returns the current structured Campaign Plan.
+
+### ExportResponse
+
+The export endpoint returns a ZIP file rather than a JSON response.
+
+## 3.4 Error Schema
+
+Campaign Mode should use a consistent error response structure.
+
+Example:
+
+{
+  "error": {
+    "code": "CAMPAIGN_NOT_READY",
+    "message": "More campaign information is required before generating the plan."
+  }
+}
+
+The error code is intended for programmatic handling, while the message provides a user-friendly explanation.
+
+# 4. Flow / State Machine
+
+**Status: Completed**
+
+This section defines the Campaign Mode workflow and the rules governing Campaign state transitions.
+
+## 4.1 Campaign States
+
+Campaign Mode uses the following primary states:
+
+- `BRIEFING`
+- `READY`
+- `GENERATING`
+- `PLAN_READY`
+
+### BRIEFING
+
+The Campaign Brief is still being collected or does not yet contain enough information for Campaign Plan generation.
+
+### READY
+
+The Campaign Brief contains sufficient information to generate a Campaign Plan.
+
+A READY campaign does not yet imply that a Campaign Plan exists.
+
+### GENERATING
+
+Campaign Plan generation is currently in progress.
+
+### PLAN_READY
+
+A valid Campaign Plan has been generated, validated and persisted.
+
+## 4.2 Main Campaign Flow
+
+The normal Campaign Mode flow is:
+
+BRIEFING
+↓
+READY
+↓
+GENERATING
+↓
+PLAN_READY
+
+The transition from `BRIEFING` to `READY` occurs when Campaign Brief readiness rules are satisfied.
+
+Campaign Plan generation is initiated explicitly by the user.
+
+## 4.3 State Transition Rules
+
+| Current State | Event | Next State |
+|---|---|---|
+| BRIEFING | Brief remains insufficient | BRIEFING |
+| BRIEFING | Brief becomes sufficient | READY |
+| READY | Brief becomes insufficient | BRIEFING |
+| READY | User requests generation | GENERATING |
+| GENERATING | Valid plan generated and saved | PLAN_READY |
+| GENERATING | Generation fails | READY |
+| PLAN_READY | Campaign Brief changes | READY |
+| PLAN_READY | Campaign is exported | PLAN_READY |
+
+## 4.4 Generation Failure
+
+If Campaign Plan generation fails:
+
+- the Campaign Brief remains persisted;
+- an invalid Campaign Plan must not be saved;
+- the Campaign must not remain stuck in `GENERATING`;
+- the Campaign returns to `READY`;
+- the user may retry generation.
+
+## 4.5 Brief Changes After Plan Generation
+
+If the Campaign Brief changes after reaching `PLAN_READY`, the existing Campaign Plan should be considered outdated.
+
+For V1, any Campaign Brief change after plan generation returns the Campaign to `READY`.
+
+The system should not automatically regenerate the plan.
+
+The user explicitly requests regeneration through the same Campaign Plan generation endpoint.
+
+## 4.6 Export Behavior
+
+Export does not change Campaign state.
+
+A Campaign in `PLAN_READY` remains in `PLAN_READY` after a successful export.
+
+Export uses the already persisted Campaign Brief and Campaign Plan and does not trigger a new LLM generation.
+
+# 5. LLM Integration Details
+
+**Status: Completed**
+
+This section defines how Campaign Mode integrates with the configured Large Language Model provider.
+
+## 5.1 Provider Architecture
+
+Campaign components must not call Gemini directly.
+
+The integration flow is:
+
+Campaign Components  
+↓  
+LLM Service  
+↓  
+LLM Provider Interface  
+↓  
+Gemini Provider  
+↓  
+Gemini API  
+↓  
+Gemini Model
+
+The LLM Service provides a provider-independent interface.
+
+Gemini is the initial provider for V1, while the architecture should allow future provider implementations such as Groq or OpenAI.
+
+## 5.2 LLM Configuration
+
+LLM configuration should be provided through backend environment variables.
+
+Example configuration:
+
+```text
+LLM_PROVIDER=gemini
+LLM_MODEL=<configured-model>
+GEMINI_API_KEY=<secret>
+
+API keys and other provider credentials must never be exposed to the frontend or committed to source control.
+
+The concrete Gemini model should be configurable rather than hard-coded throughout Campaign Mode.
+
+5.3 Conversation and Extraction Call
+
+For a normal user message, V1 should aim to use one LLM call for both:
+
+campaign information extraction;
+natural conversational response generation.
+
+Input context should include:
+
+conversation/extraction system instructions;
+current Campaign Brief;
+latest user message;
+required structured output schema.
+
+Expected structured output:
+
+{
+  "reply": "Natural conversational response",
+  "extracted_fields": {
+    "business": null,
+    "product_or_service": null,
+    "goal": null,
+    "audience": null,
+    "location": null,
+    "offer": null,
+    "value_proposition": null,
+    "channels": null,
+    "budget_amount": null,
+    "budget_currency": null,
+    "duration": null,
+    "brand_tone": null,
+    "constraints": null
+  }
+}
+
+The backend validates the structured output before updating the Campaign Brief.
+
+Existing confirmed information should not be overwritten unless the user clearly provides a correction.
+
+5.4 Follow-Up Questions
+
+Campaign readiness and missing-field logic remain backend responsibilities.
+
+The backend determines what information is still needed.
+
+The LLM is responsible for phrasing the next useful question naturally and according to the current Campaign Brief.
+
+Conceptually:
+
+Backend determines WHAT is needed
+              ↓
+LLM determines HOW to ask naturally
+
+The system should avoid repeating questions for information already known.
+
+Unknown optional fields such as brand_tone or constraints must not block Campaign Plan generation when the Campaign Brief otherwise contains sufficient information.
+
+5.5 Campaign Plan Generation
+
+Campaign Plan generation uses a separate LLM call.
+
+The generation input includes:
+
+marketing strategist system instructions;
+confirmed Campaign Brief;
+Campaign Plan Schema;
+Campaign Plan quality rules.
+
+Conceptually:
+
+System Instructions
+        +
+Campaign Brief
+        +
+Campaign Plan Schema
+        +
+Quality Rules
+        ↓
+       LLM
+        ↓
+Structured Campaign Plan
+
+The generated plan must respect confirmed campaign facts, campaign duration and confirmed budget when provided.
+
+AI recommendations must not be presented as confirmed business facts.
+
+The model must not invent missing business information merely to complete the Campaign Plan.
+
+When appropriate, missing optional information may result in clearly identified strategic recommendations.
+
+5.6 Structured Output Validation
+
+LLM output must not be trusted without validation.
+
+The validation flow is:
+
+LLM Response
+      ↓
+Schema Validation
+      ↓
+   Valid?
+   /    \
+ YES     NO
+  ↓       ↓
+Continue  Controlled repair/retry
+              ↓
+          Still invalid?
+              ↓
+        Controlled error
+
+Only valid structured output may continue through the Campaign workflow.
+
+Invalid Campaign Plans must not be persisted.
+
+5.7 Retry and Failure Handling
+
+Retries should be limited and used only for appropriate temporary or recoverable failures.
+
+Relevant cases include:
+
+provider timeout;
+provider temporarily unavailable;
+invalid structured output.
+
+A provider timeout occurs when the configured LLM provider does not return a response within the allowed request time.
+
+A provider-unavailable error occurs when the external LLM service is temporarily unable to process the request.
+
+A failed LLM call must not destroy persisted Campaign Brief data.
+
+Campaign Plan generation failure must return the Campaign from GENERATING to READY.
+
+Retry attempts must be controlled and limited. Infinite retry loops are not allowed.
+
+If the provider remains unavailable or the response remains invalid after the allowed retry strategy, Campaign Mode should return a controlled and user-friendly error.
+
+5.8 Backend Responsibilities
+
+The LLM is responsible for language understanding, campaign information extraction, natural conversational responses and Campaign Plan generation.
+
+The LLM must not control:
+
+authentication;
+authorization;
+campaign ownership;
+database access;
+persistence;
+Campaign state transitions;
+readiness rules;
+export;
+security-sensitive decisions.
+
+These responsibilities remain controlled by backend application logic.
+
+Conceptually:
+
+LLM
+├── Understand language
+├── Extract campaign information
+├── Generate natural responses
+└── Generate Campaign Plan
+
+Backend
+├── Validate
+├── Decide readiness
+├── Control state
+├── Authorize access
+├── Persist data
+├── Handle errors
+└── Export
+5.9 Provider Switching
+
+Campaign Mode should depend on an LLM Provider interface rather than directly on Gemini-specific code.
+
+The initial implementation uses Gemini.
+
+Future providers may be added through additional provider implementations without rewriting Campaign-specific business logic.
+
+Example:
+
+LLM Provider Interface
+├── Gemini Provider
+├── Groq Provider       (future)
+└── OpenAI Provider     (future)
+
+Provider selection should be configuration-driven.
+
+Conceptually:
+
+LLM_PROVIDER=gemini
+        ↓
+Gemini Provider
+
+Future:
+
+LLM_PROVIDER=groq
+        ↓
+Groq Provider
+
+Campaign-specific components such as the Campaign Service, Extractor and Campaign Generator should remain independent of provider-specific API details.
+
+5.10 V1 LLM Integration Summary
+
+Campaign Mode uses two primary LLM flows.
+
+Conversation / Extraction
+Latest User Message
+        +
+Current Campaign Brief
+        +
+Conversation Instructions
+        +
+Structured Output Schema
+        ↓
+       LLM
+        ↓
+reply + extracted_fields
+        ↓
+Backend Validation
+        ↓
+Campaign Brief Update
+        ↓
+Persistence
+Campaign Plan Generation
+Confirmed Campaign Brief
+        +
+Marketing Strategist Instructions
+        +
+Campaign Plan Schema
+        +
+Quality Rules
+        ↓
+       LLM
+        ↓
+Structured Campaign Plan
+        ↓
+Plan Validation
+        ↓
+Persistence
+        ↓
+PLAN_READY
+
+<!-- =============================== -->
+
+# 6. Export Details
+
+**Status: Completed**
+
+This section defines how Campaign Mode exports an existing Campaign Plan and its supporting Campaign Brief.
+
+The V1 export is designed to provide both a human-readable campaign document and structured machine-readable campaign data.
+
+## 6.1 Export Package
+
+Campaign Mode should export a ZIP package containing:
+
+```text
+campaign-export.zip
+│
+├── campaign-plan.pdf
+├── campaign-plan.json
+└── campaign-brief.json
+```
+
+Each file has a different purpose:
+
+- `campaign-plan.pdf` provides a human-readable and professional representation of the Campaign Plan.
+- `campaign-plan.json` provides the structured Campaign Plan data.
+- `campaign-brief.json` provides the structured Campaign Brief used as the basis for the plan.
+
+The ZIP package is the downloadable export artifact for Campaign Mode V1.
+
+## 6.2 Export Source of Data
+
+Export must use the Campaign Brief and Campaign Plan already persisted by the backend.
+
+The export process must not call the LLM or generate a new Campaign Plan.
+
+Conceptually:
+
+```text
+Saved Campaign
+      +
+Saved Campaign Brief
+      +
+Saved Campaign Plan
+      ↓
+Export Service
+      ↓
+Export Package
+```
+
+This ensures that the exported files represent the same Campaign Plan that the user sees in the application.
+
+## 6.3 Export Flow
+
+The V1 export flow is:
+
+```text
+User requests export
+        ↓
+GET /campaigns/{id}/export
+        ↓
+Authenticate and authorize request
+        ↓
+Load Campaign
+        ↓
+Load saved Campaign Brief
+        ↓
+Load saved Campaign Plan
+        ↓
+Validate export availability
+        ↓
+Generate campaign-brief.json
+        ↓
+Generate campaign-plan.json
+        ↓
+Render campaign-plan.pdf
+        ↓
+Create ZIP package
+        ↓
+Return ZIP file
+```
+
+Export generation is deterministic from the persisted Campaign data and does not require additional AI generation.
+
+## 6.4 Campaign Plan PDF
+
+`campaign-plan.pdf` is the human-readable representation of the Campaign Plan.
+
+The PDF should present the plan in a clear and professional structure.
+
+The document should include relevant Campaign Plan sections such as:
+
+- campaign name;
+- executive summary;
+- objective;
+- target audience;
+- offer, when available;
+- value proposition;
+- positioning;
+- key message;
+- strategy;
+- channel strategy;
+- content direction;
+- budget allocation, when available;
+- timeline;
+- KPIs;
+- assumptions or risks;
+- next steps.
+
+The PDF is a presentation of the already generated Campaign Plan. It must not introduce new campaign facts or AI-generated strategy that does not exist in the persisted plan.
+
+Exact visual styling and PDF rendering implementation are implementation-level decisions and may be finalized during the Export Service ticket.
+
+## 6.5 Campaign Plan JSON
+
+`campaign-plan.json` contains the persisted structured Campaign Plan.
+
+Its structure should follow the Campaign Plan Schema defined in this specification.
+
+Conceptually:
+
+```json
+{
+  "campaign_name": "Student Fitness Boost",
+  "executive_summary": "...",
+  "objective": {},
+  "target_audience": {},
+  "offer": "...",
+  "value_proposition": "...",
+  "positioning": "...",
+  "key_message": "...",
+  "strategy": "...",
+  "channels": [],
+  "content_direction": [],
+  "budget_allocation": {},
+  "timeline": [],
+  "kpis": [],
+  "assumptions_or_risks": [],
+  "next_steps": []
+}
+```
+
+The exported JSON must represent the saved Campaign Plan rather than triggering regeneration.
+
+## 6.6 Campaign Brief JSON
+
+`campaign-brief.json` contains the Campaign Brief associated with the exported Campaign Plan.
+
+Its structure should follow the Campaign Brief Schema defined in this specification.
+
+Example:
+
+```json
+{
+  "business": "FitZone Gym",
+  "product_or_service": "Gym membership",
+  "goal": "Acquire new customers",
+  "audience": "Students aged 18-25",
+  "location": "Prishtina",
+  "offer": "50% off first month",
+  "value_proposition": "Modern equipment, professional trainers and flexible opening hours",
+  "channels": [
+    "Instagram",
+    "TikTok"
+  ],
+  "budget_amount": 200,
+  "budget_currency": "EUR",
+  "duration": "2 weeks",
+  "brand_tone": "Energetic and motivating",
+  "constraints": []
+}
+```
+
+The Campaign Brief allows the exported package to preserve the context on which the Campaign Plan was based.
+
+## 6.7 Export Availability
+
+Export is available only when a valid Campaign Plan exists.
+
+A Campaign without a generated plan must not produce an empty or incomplete ZIP package.
+
+For example, an export request without an available Campaign Plan may return a controlled error:
+
+```json
+{
+  "error": {
+    "code": "CAMPAIGN_PLAN_NOT_AVAILABLE",
+    "message": "Generate the Campaign Plan before exporting the campaign."
+  }
+}
+```
+
+The backend must verify Campaign access and plan availability before creating the export package.
+
+## 6.8 Export and Campaign State
+
+Export does not change Campaign state.
+
+For example:
+
+```text
+PLAN_READY
+    ↓
+Export requested
+    ↓
+ZIP generated
+    ↓
+PLAN_READY
+```
+
+A successful export does not create a new Campaign Plan.
+
+An export failure must also leave the Campaign and its persisted data unchanged.
+
+## 6.9 ZIP Persistence
+
+The generated ZIP package does not need to be permanently stored in V1.
+
+The recommended V1 flow is:
+
+```text
+Persisted Brief + Plan
+        ↓
+Export requested
+        ↓
+Generate export files
+        ↓
+Create ZIP
+        ↓
+Return ZIP
+        ↓
+Clean temporary resources
+```
+
+The Campaign Brief and Campaign Plan remain the persistent source data.
+
+If the user needs the package again, Campaign Mode can regenerate the export from the saved data.
+
+## 6.10 Export Failure Handling
+
+Relevant export failures may include:
+
+- Campaign not found;
+- user not authorized to access the Campaign;
+- Campaign Plan not available;
+- PDF rendering failure;
+- JSON serialization failure;
+- ZIP creation failure;
+- unexpected storage or filesystem failure.
+
+Export failures must:
+
+- return a controlled error;
+- not modify Campaign state;
+- not delete or corrupt the Campaign Brief;
+- not delete or corrupt the Campaign Plan;
+- not expose internal stack traces or sensitive information.
+
+Temporary export resources should be cleaned up when appropriate.
+
+## 6.11 V1 Export Boundaries
+
+V1 export includes:
+
+```text
+campaign-plan.pdf
+campaign-plan.json
+campaign-brief.json
+```
+
+The following are outside the required V1 export scope:
+
+- generated social media posts;
+- generated campaign images;
+- videos;
+- competitor research reports;
+- market research datasets;
+- advertising platform exports;
+- analytics reports;
+- automatically published assets.
+
+These capabilities may be added in future versions without changing the core Campaign Plan export concept.
+
+## 6.12 V1 Export Summary
+
+The final V1 export flow is:
+
+```text
+Campaign Brief
+       +
+Campaign Plan
+       ↓
+Export Service
+       ↓
+Validate access and availability
+       ↓
+Generate:
+├── campaign-plan.pdf
+├── campaign-plan.json
+└── campaign-brief.json
+       ↓
+Package as ZIP
+       ↓
+Return to user
+```
+
+No LLM call is required during export.
+
+The persisted Campaign Brief and Campaign Plan remain the source of truth for exported campaign data.
