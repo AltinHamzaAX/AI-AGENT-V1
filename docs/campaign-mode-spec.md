@@ -740,8 +740,8 @@ Main fields:
 
 - `campaign_name`: string
 - `executive_summary`: string
-- `objective`: object
-- `target_audience`: object
+- `objective`: Objective
+- `target_audience`: TargetAudience
 - `offer`: string | null
 - `value_proposition`: string
 - `positioning`: string
@@ -756,6 +756,21 @@ Main fields:
 - `next_steps`: list[string]
 
 Supporting nested structures:
+
+### Objective
+
+- `primary`: string
+- `secondary`: string | null
+
+`primary` is required and must not be empty.
+
+### TargetAudience
+
+- `primary`: string
+- `location`: string | null
+- `needs_or_motivations`: list[string]
+
+`primary` is required and must not be empty.
 
 ### ChannelStrategy
 
@@ -1360,8 +1375,18 @@ Conceptually:
 {
   "campaign_name": "Student Fitness Boost",
   "executive_summary": "...",
-  "objective": {},
-  "target_audience": {},
+  "objective": {
+    "primary": "Acquire new student customers",
+    "secondary": null
+  },
+  "target_audience": {
+    "primary": "Students aged 18-25",
+    "location": "Prishtina",
+    "needs_or_motivations": [
+      "Affordable gym access",
+      "Flexible opening hours"
+    ]
+  },
   "offer": "...",
   "value_proposition": "...",
   "positioning": "...",
