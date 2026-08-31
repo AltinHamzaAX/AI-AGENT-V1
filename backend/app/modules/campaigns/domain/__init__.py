@@ -1,5 +1,6 @@
 """Campaign domain types and contracts."""
 
+from app.modules.campaigns.domain.entities import Campaign
 from app.modules.campaigns.domain.enums import CampaignStatus
 
-__all__ = ["CampaignStatus"]
+__all__ = ["Campaign", "CampaignStatus"]
