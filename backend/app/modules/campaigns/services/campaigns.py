@@ -57,10 +57,18 @@ class CampaignService:
             scope=scope,
         ):
             raise CampaignSourceNotFoundError
-        return await self._repository.create_campaign(
+        brief = initial_brief or CampaignBrief()
+        campaign = await self._repository.create_campaign(
             conversation_id=conversation_id,
-            initial_brief=initial_brief or CampaignBrief(),
+            initial_brief=brief,
         )
+        state = await self._reevaluate_readiness(
+            campaign_id=campaign.id,
+            scope=scope,
+            brief=brief,
+            brief_changed=False,
+        )
+        return state.campaign
 
     async def get_campaign(
         self,
@@ -170,20 +178,12 @@ class CampaignService:
             scope=scope,
             extracted_fields=extracted_fields,
         )
-        if update.changed:
-            state = await self._reevaluate_readiness(
-                campaign_id=campaign_id,
-                scope=scope,
-                brief=update.brief,
-                brief_changed=True,
-            )
-        else:
-            campaign = await self.get_campaign(campaign_id=campaign_id, scope=scope)
-            state = CampaignReadinessStateResult(
-                campaign=campaign,
-                readiness=evaluate_campaign_readiness(update.brief),
-                status_changed=False,
-            )
+        state = await self._reevaluate_readiness(
+            campaign_id=campaign_id,
+            scope=scope,
+            brief=update.brief,
+            brief_changed=update.changed,
+        )
         return CampaignBriefStateResult(
             update=update,
             campaign=state.campaign,

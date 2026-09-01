@@ -3,7 +3,7 @@ from enum import StrEnum
 
 from app.modules.campaigns.domain.enums import CampaignStatus
 from app.modules.campaigns.domain.exceptions import InvalidCampaignTransitionError
-from app.modules.campaigns.schemas import CampaignBrief
+from app.modules.campaigns.schemas.models import CampaignBrief
 
 
 BUSINESS_REQUIREMENT = "business_or_product_service"

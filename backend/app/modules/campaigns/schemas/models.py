@@ -3,7 +3,6 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 ShortText = Annotated[str, Field(min_length=1, max_length=500)]
 LongText = Annotated[str, Field(min_length=1, max_length=20_000)]
 Money = Annotated[Decimal, Field(ge=0)]

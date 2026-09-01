@@ -1,5 +1,6 @@
 """Campaign transport and application schemas."""
 
+from app.modules.campaigns.schemas.api import CampaignMessageRequest, CampaignMessageResponse
 from app.modules.campaigns.schemas.models import (
     BudgetAllocation,
     BudgetItem,
@@ -19,6 +20,8 @@ __all__ = [
     "BudgetItem",
     "CampaignBrief",
     "CampaignConversationResult",
+    "CampaignMessageRequest",
+    "CampaignMessageResponse",
     "CampaignPlan",
     "ChannelStrategy",
     "ContentDirection",

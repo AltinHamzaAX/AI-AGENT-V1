@@ -47,6 +47,8 @@ async def test_create_campaign_validates_source_and_delegates_atomic_creation(
     campaign = _campaign(conversation_id=conversation_id)
     repository.conversation_exists = AsyncMock(return_value=True)
     repository.create_campaign = AsyncMock(return_value=campaign)
+    repository.get_campaign = AsyncMock(return_value=campaign)
+    repository.update_status = AsyncMock()
     service = CampaignService(repository)
 
     result = await service.create_campaign(
@@ -64,6 +66,7 @@ async def test_create_campaign_validates_source_and_delegates_atomic_creation(
         conversation_id=conversation_id,
         initial_brief=brief,
     )
+    repository.update_status.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -73,7 +76,10 @@ async def test_create_campaign_uses_empty_brief_when_none_is_supplied(
 ) -> None:
     conversation_id = uuid4()
     repository.conversation_exists = AsyncMock(return_value=True)
-    repository.create_campaign = AsyncMock(return_value=_campaign(conversation_id=conversation_id))
+    campaign = _campaign(conversation_id=conversation_id)
+    repository.create_campaign = AsyncMock(return_value=campaign)
+    repository.get_campaign = AsyncMock(return_value=campaign)
+    repository.update_status = AsyncMock()
 
     await CampaignService(repository).create_campaign(
         conversation_id=conversation_id,
@@ -82,6 +88,41 @@ async def test_create_campaign_uses_empty_brief_when_none_is_supplied(
 
     persisted_brief = repository.create_campaign.await_args.kwargs["initial_brief"]
     assert persisted_brief == CampaignBrief()
+    repository.update_status.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_campaign_with_sufficient_brief_starts_ready(
+    repository: Mock,
+    scope: ConversationScope,
+) -> None:
+    conversation_id = uuid4()
+    created = _campaign(conversation_id=conversation_id)
+    ready = Campaign(
+        id=created.id,
+        conversation_id=created.conversation_id,
+        status=CampaignStatus.READY,
+        created_at=created.created_at,
+        updated_at=created.updated_at,
+    )
+    brief = CampaignBrief(business="Acme", goal="Grow", audience="Retailers")
+    repository.conversation_exists = AsyncMock(return_value=True)
+    repository.create_campaign = AsyncMock(return_value=created)
+    repository.get_campaign = AsyncMock(return_value=created)
+    repository.update_status = AsyncMock(return_value=ready)
+
+    result = await CampaignService(repository).create_campaign(
+        conversation_id=conversation_id,
+        scope=scope,
+        initial_brief=brief,
+    )
+
+    assert result.status is CampaignStatus.READY
+    repository.update_status.assert_awaited_once_with(
+        campaign_id=created.id,
+        scope=scope,
+        status=CampaignStatus.READY,
+    )
 
 
 @pytest.mark.asyncio
