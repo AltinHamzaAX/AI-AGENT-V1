@@ -1,5 +1,6 @@
 from app.core.config import Settings, get_settings
 from app.infrastructure.storage.s3 import S3Storage
+from app.integrations.gemini import GeminiProvider
 from app.integrations.huggingface import HuggingFaceImageProvider
 from app.integrations.mock import (
     MockEmbeddingProvider,
@@ -56,6 +57,12 @@ def create_llm_provider(settings: Settings | None = None) -> LLMProvider:
     name = _name(configured.llm_provider, capability="LLM")
     if name == "mock":
         return MockLLMProvider()
+    if name == "gemini":
+        return GeminiProvider(
+            api_key=_gemini_api_key(configured),
+            model=_model(configured.llm_model, capability="LLM"),
+            timeout_seconds=configured.provider_timeout_seconds,
+        )
     if name == "ollama":
         return OllamaLLMProvider(
             base_url=configured.ollama_base_url,
@@ -83,6 +90,12 @@ def create_creative_llm_provider(settings: Settings | None = None) -> LLMProvide
     name = _name(configured.llm_provider, capability="LLM")
     if name == "mock":
         return MockLLMProvider()
+    if name == "gemini":
+        return GeminiProvider(
+            api_key=_gemini_api_key(configured),
+            model=model,
+            timeout_seconds=configured.provider_timeout_seconds,
+        )
     if name == "ollama":
         return OllamaLLMProvider(
             base_url=configured.ollama_base_url,
@@ -183,6 +196,12 @@ def _model(value: str, *, capability: str) -> str:
     if not model:
         raise ProviderConfigurationError(f"{capability} model is not configured")
     return model
+
+
+def _gemini_api_key(settings: Settings) -> str:
+    if not settings.gemini_api_key:
+        raise ProviderConfigurationError("Gemini API key is required")
+    return settings.gemini_api_key
 
 
 def _unsupported(capability: str, provider: str) -> ProviderConfigurationError:

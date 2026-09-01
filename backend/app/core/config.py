@@ -56,6 +56,7 @@ class Settings(BaseSettings):
 
     llm_provider: str = ""
     llm_model: str = ""
+    gemini_api_key: str = Field(default="", repr=False)
     #: The stages that invent rather than extract. Empty means they share
     #: LLM_MODEL; a larger model here costs nothing on the other stages.
     creative_llm_model: str = ""

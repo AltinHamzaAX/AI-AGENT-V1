@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -13,6 +14,7 @@ from app.modules.posts.providers import (
 #: plan allowance. Both mean the same thing to a caller: stop asking.
 _QUOTA_STATUSES = frozenset({402, 432})
 _RATE_LIMIT_STATUS = 429
+HTTPErrorMapper = Callable[[httpx.Response], ProviderError | None]
 
 
 class ProviderHTTPAdapter:
@@ -21,9 +23,11 @@ class ProviderHTTPAdapter:
         *,
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 120.0,
+        error_mapper: HTTPErrorMapper | None = None,
     ) -> None:
         self._client = client
         self._timeout_seconds = timeout_seconds
+        self._error_mapper = error_mapper
 
     async def post_json(
         self,
@@ -86,6 +90,10 @@ class ProviderHTTPAdapter:
             raise ProviderError(f"{provider} request timed out") from exc
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
+            if self._error_mapper is not None:
+                mapped = self._error_mapper(exc.response)
+                if mapped is not None:
+                    raise mapped from exc
             if status in _QUOTA_STATUSES:
                 raise ProviderQuotaError(
                     f"{provider} usage allowance is exhausted (status {status})"
@@ -99,4 +107,4 @@ class ProviderHTTPAdapter:
             raise ProviderError(f"{provider} request failed") from exc
 
 
-__all__ = ["ProviderHTTPAdapter"]
+__all__ = ["HTTPErrorMapper", "ProviderHTTPAdapter"]
