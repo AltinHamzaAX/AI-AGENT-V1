@@ -31,6 +31,13 @@ class CampaignBrief(CampaignSchema):
     constraints: list[LongText] | None = Field(default=None, max_length=100)
 
 
+class CampaignConversationResult(CampaignSchema):
+    """Validated reply and facts proposed by one Campaign conversation turn."""
+
+    reply: LongText
+    extracted_fields: CampaignBrief
+
+
 class Objective(CampaignSchema):
     primary: LongText
     secondary: LongText | None = None
@@ -100,6 +107,7 @@ __all__ = [
     "BudgetAllocation",
     "BudgetItem",
     "CampaignBrief",
+    "CampaignConversationResult",
     "CampaignPlan",
     "ChannelStrategy",
     "ContentDirection",
