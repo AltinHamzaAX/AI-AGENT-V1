@@ -3,8 +3,15 @@ from uuid import UUID
 
 from app.modules.campaigns.domain import (
     Campaign,
+    CampaignEvent,
     CampaignNotFoundError,
+    CampaignReadiness,
     CampaignSourceNotFoundError,
+    CampaignStatus,
+    InvalidCampaignTransitionError,
+    evaluate_campaign_readiness,
+    status_for_readiness,
+    transition_campaign_status,
 )
 from app.modules.campaigns.repositories import CampaignRepository
 from app.modules.campaigns.schemas import CampaignBrief, CampaignPlan
@@ -17,6 +24,21 @@ class CampaignBriefUpdateResult:
     changed: bool
     changed_fields: tuple[str, ...]
     plan_exists: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignReadinessStateResult:
+    campaign: Campaign
+    readiness: CampaignReadiness
+    status_changed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignBriefStateResult:
+    update: CampaignBriefUpdateResult
+    campaign: Campaign
+    readiness: CampaignReadiness
+    status_changed: bool
 
 
 class CampaignService:
@@ -104,11 +126,7 @@ class CampaignService:
         if current is None:
             raise CampaignNotFoundError
 
-        changes = {
-            name: candidate
-            for name, candidate in extracted_fields.model_dump().items()
-            if candidate is not None and candidate != getattr(current, name)
-        }
+        changes = _brief_changes(current, extracted_fields)
         if changes:
             # Validate the complete merged contract before sending a partial patch.
             CampaignBrief.model_validate({**current.model_dump(), **changes})
@@ -133,5 +151,127 @@ class CampaignService:
             plan_exists=plan is not None,
         )
 
+    async def update_brief_and_reevaluate(
+        self,
+        *,
+        campaign_id: UUID,
+        scope: ConversationScope,
+        extracted_fields: CampaignBrief,
+    ) -> CampaignBriefStateResult:
+        campaign = await self.get_campaign(campaign_id=campaign_id, scope=scope)
+        if campaign.status is CampaignStatus.GENERATING:
+            current = await self.get_brief(campaign_id=campaign_id, scope=scope)
+            if _brief_changes(current, extracted_fields):
+                raise InvalidCampaignTransitionError(
+                    "Campaign Brief cannot change while generation is in progress"
+                )
+        update = await self.update_brief_from_extraction(
+            campaign_id=campaign_id,
+            scope=scope,
+            extracted_fields=extracted_fields,
+        )
+        if update.changed:
+            state = await self._reevaluate_readiness(
+                campaign_id=campaign_id,
+                scope=scope,
+                brief=update.brief,
+                brief_changed=True,
+            )
+        else:
+            campaign = await self.get_campaign(campaign_id=campaign_id, scope=scope)
+            state = CampaignReadinessStateResult(
+                campaign=campaign,
+                readiness=evaluate_campaign_readiness(update.brief),
+                status_changed=False,
+            )
+        return CampaignBriefStateResult(
+            update=update,
+            campaign=state.campaign,
+            readiness=state.readiness,
+            status_changed=state.status_changed,
+        )
 
-__all__ = ["CampaignBriefUpdateResult", "CampaignService"]
+    async def reevaluate_readiness(
+        self,
+        *,
+        campaign_id: UUID,
+        scope: ConversationScope,
+        brief_changed: bool = False,
+    ) -> CampaignReadinessStateResult:
+        brief = await self.get_brief(campaign_id=campaign_id, scope=scope)
+        return await self._reevaluate_readiness(
+            campaign_id=campaign_id,
+            scope=scope,
+            brief=brief,
+            brief_changed=brief_changed,
+        )
+
+    async def transition(
+        self,
+        *,
+        campaign_id: UUID,
+        scope: ConversationScope,
+        event: CampaignEvent,
+    ) -> Campaign:
+        campaign = await self.get_campaign(campaign_id=campaign_id, scope=scope)
+        target = transition_campaign_status(campaign.status, event)
+        if target is campaign.status:
+            return campaign
+        updated = await self._repository.update_status(
+            campaign_id=campaign_id,
+            scope=scope,
+            status=target,
+        )
+        if updated is None:
+            raise CampaignNotFoundError
+        return updated
+
+    async def _reevaluate_readiness(
+        self,
+        *,
+        campaign_id: UUID,
+        scope: ConversationScope,
+        brief: CampaignBrief,
+        brief_changed: bool,
+    ) -> CampaignReadinessStateResult:
+        campaign = await self.get_campaign(campaign_id=campaign_id, scope=scope)
+        readiness = evaluate_campaign_readiness(brief)
+        if campaign.status is CampaignStatus.GENERATING:
+            if brief_changed:
+                raise InvalidCampaignTransitionError(
+                    "Campaign Brief cannot change while generation is in progress"
+                )
+            return CampaignReadinessStateResult(campaign, readiness, False)
+        if campaign.status is CampaignStatus.PLAN_READY and not brief_changed:
+            return CampaignReadinessStateResult(campaign, readiness, False)
+
+        target = status_for_readiness(readiness)
+        if target is campaign.status:
+            return CampaignReadinessStateResult(campaign, readiness, False)
+        updated = await self._repository.update_status(
+            campaign_id=campaign_id,
+            scope=scope,
+            status=target,
+        )
+        if updated is None:
+            raise CampaignNotFoundError
+        return CampaignReadinessStateResult(updated, readiness, True)
+
+
+def _brief_changes(
+    current: CampaignBrief,
+    extracted_fields: CampaignBrief,
+) -> dict[str, object]:
+    return {
+        name: candidate
+        for name, candidate in extracted_fields.model_dump().items()
+        if candidate is not None and candidate != getattr(current, name)
+    }
+
+
+__all__ = [
+    "CampaignBriefStateResult",
+    "CampaignBriefUpdateResult",
+    "CampaignReadinessStateResult",
+    "CampaignService",
+]

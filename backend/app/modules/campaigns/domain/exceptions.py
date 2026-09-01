@@ -6,4 +6,12 @@ class CampaignSourceNotFoundError(LookupError):
     pass
 
 
-__all__ = ["CampaignNotFoundError", "CampaignSourceNotFoundError"]
+class InvalidCampaignTransitionError(RuntimeError):
+    pass
+
+
+__all__ = [
+    "CampaignNotFoundError",
+    "CampaignSourceNotFoundError",
+    "InvalidCampaignTransitionError",
+]
