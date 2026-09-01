@@ -15,6 +15,7 @@ from app.modules.campaigns.domain import (
 )
 from app.modules.campaigns.repositories import CampaignRepository
 from app.modules.campaigns.schemas import CampaignBrief, CampaignPlan
+from app.modules.campaigns.services.generation import CampaignPlanGenerator
 from app.shared.conversations.domain import ConversationScope
 
 
@@ -119,6 +120,29 @@ class CampaignService:
             campaign_id=campaign_id,
             scope=scope,
         )
+
+    async def generate_plan(
+        self,
+        *,
+        campaign_id: UUID,
+        scope: ConversationScope,
+        generator: CampaignPlanGenerator,
+    ) -> CampaignPlan:
+        brief = await self.get_brief(campaign_id=campaign_id, scope=scope)
+        await self.transition(
+            campaign_id=campaign_id,
+            scope=scope,
+            event=CampaignEvent.GENERATION_REQUESTED,
+        )
+        try:
+            return await generator.generate(brief)
+        except Exception:
+            await self.transition(
+                campaign_id=campaign_id,
+                scope=scope,
+                event=CampaignEvent.GENERATION_FAILED,
+            )
+            raise
 
     async def update_brief_from_extraction(
         self,

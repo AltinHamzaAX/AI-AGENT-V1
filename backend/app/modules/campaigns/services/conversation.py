@@ -1,5 +1,4 @@
 import json
-from typing import Any
 
 from pydantic import ValidationError
 
@@ -10,6 +9,7 @@ from app.integrations.llm import (
     ProviderResponseError,
 )
 from app.modules.campaigns.schemas import CampaignBrief, CampaignConversationResult
+from app.modules.campaigns.services.structured_output import parse_json_object
 
 
 class CampaignConversationExtractor:
@@ -46,24 +46,12 @@ class CampaignConversationExtractor:
         )
         try:
             return CampaignConversationResult.model_validate(
-                _parse_json_object(response.text)
+                parse_json_object(response.text)
             )
         except (json.JSONDecodeError, TypeError, ValidationError) as exc:
             raise ProviderResponseError(
                 "campaign conversation returned invalid structured output"
             ) from exc
-
-
-def _parse_json_object(value: str) -> dict[str, Any]:
-    text = value.strip()
-    if text.startswith("```") and text.endswith("```"):
-        lines = text.splitlines()
-        if len(lines) >= 3:
-            text = "\n".join(lines[1:-1]).strip()
-    parsed = json.loads(text)
-    if not isinstance(parsed, dict):
-        raise TypeError("provider output must be a JSON object")
-    return parsed
 
 
 def _system_prompt() -> str:

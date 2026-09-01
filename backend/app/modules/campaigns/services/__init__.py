@@ -7,6 +7,7 @@ from app.modules.campaigns.services.campaigns import (
     CampaignService,
 )
 from app.modules.campaigns.services.conversation import CampaignConversationExtractor
+from app.modules.campaigns.services.generation import CampaignPlanGenerator
 from app.modules.campaigns.services.messaging import (
     CampaignMessageResult,
     CampaignMessagingService,
@@ -18,6 +19,7 @@ __all__ = [
     "CampaignConversationExtractor",
     "CampaignMessageResult",
     "CampaignMessagingService",
+    "CampaignPlanGenerator",
     "CampaignReadinessStateResult",
     "CampaignService",
 ]

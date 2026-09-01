@@ -13,6 +13,7 @@ from app.integrations.llm import LLMProvider
 from app.modules.campaigns.services import (
     CampaignConversationExtractor,
     CampaignMessagingService,
+    CampaignPlanGenerator,
     CampaignService,
 )
 
@@ -27,6 +28,12 @@ def get_campaign_conversation_extractor(
     llm: Annotated[LLMProvider, Depends(get_llm_provider)],
 ) -> CampaignConversationExtractor:
     return CampaignConversationExtractor(llm)
+
+
+def get_campaign_plan_generator(
+    llm: Annotated[LLMProvider, Depends(get_llm_provider)],
+) -> CampaignPlanGenerator:
+    return CampaignPlanGenerator(llm)
 
 
 def get_campaign_messaging_service(
@@ -53,12 +60,18 @@ CampaignMessagingServiceDependency = Annotated[
     CampaignMessagingService,
     Depends(get_campaign_messaging_service),
 ]
+CampaignPlanGeneratorDependency = Annotated[
+    CampaignPlanGenerator,
+    Depends(get_campaign_plan_generator),
+]
 
 __all__ = [
     "CampaignConversationExtractorDependency",
     "CampaignMessagingServiceDependency",
+    "CampaignPlanGeneratorDependency",
     "CampaignServiceDependency",
     "get_campaign_conversation_extractor",
     "get_campaign_messaging_service",
+    "get_campaign_plan_generator",
     "get_campaign_service",
 ]
