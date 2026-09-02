@@ -12,6 +12,7 @@ from app.modules.campaigns.services.messaging import (
     CampaignMessageResult,
     CampaignMessagingService,
 )
+from app.modules.campaigns.services.validation import CampaignPlanValidator
 
 __all__ = [
     "CampaignBriefStateResult",
@@ -20,6 +21,7 @@ __all__ = [
     "CampaignMessageResult",
     "CampaignMessagingService",
     "CampaignPlanGenerator",
+    "CampaignPlanValidator",
     "CampaignReadinessStateResult",
     "CampaignService",
 ]

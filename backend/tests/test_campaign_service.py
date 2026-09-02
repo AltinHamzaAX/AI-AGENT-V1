@@ -26,12 +26,16 @@ def repository() -> Mock:
     return Mock(spec=CampaignRepository)
 
 
-def _campaign(*, conversation_id=None) -> Campaign:
+def _campaign(
+    *,
+    conversation_id=None,
+    status: CampaignStatus = CampaignStatus.BRIEFING,
+) -> Campaign:
     now = datetime.now(UTC)
     return Campaign(
         id=uuid4(),
         conversation_id=conversation_id or uuid4(),
-        status=CampaignStatus.BRIEFING,
+        status=status,
         created_at=now,
         updated_at=now,
     )
@@ -200,6 +204,9 @@ async def test_get_plan_preserves_absence_of_optional_current_plan(
     scope: ConversationScope,
 ) -> None:
     campaign_id = uuid4()
+    repository.get_campaign = AsyncMock(
+        return_value=_campaign(status=CampaignStatus.PLAN_READY)
+    )
     repository.get_plan = AsyncMock(return_value=None)
 
     result = await CampaignService(repository).get_plan(

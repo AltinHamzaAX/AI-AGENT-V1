@@ -1,10 +1,12 @@
 from dataclasses import dataclass
 from uuid import UUID
 
+from app.integrations.llm import ProviderResponseError
 from app.modules.campaigns.domain import (
     Campaign,
     CampaignEvent,
     CampaignNotFoundError,
+    CampaignPlanValidationError,
     CampaignReadiness,
     CampaignSourceNotFoundError,
     CampaignStatus,
@@ -16,6 +18,7 @@ from app.modules.campaigns.domain import (
 from app.modules.campaigns.repositories import CampaignRepository
 from app.modules.campaigns.schemas import CampaignBrief, CampaignPlan
 from app.modules.campaigns.services.generation import CampaignPlanGenerator
+from app.modules.campaigns.services.validation import CampaignPlanValidator
 from app.shared.conversations.domain import ConversationScope
 
 
@@ -43,8 +46,15 @@ class CampaignBriefStateResult:
 
 
 class CampaignService:
-    def __init__(self, repository: CampaignRepository) -> None:
+    MAX_PLAN_GENERATION_ATTEMPTS = 2
+
+    def __init__(
+        self,
+        repository: CampaignRepository,
+        plan_validator: CampaignPlanValidator | None = None,
+    ) -> None:
         self._repository = repository
+        self._plan_validator = plan_validator or CampaignPlanValidator()
 
     async def create_campaign(
         self,
@@ -116,6 +126,9 @@ class CampaignService:
         campaign_id: UUID,
         scope: ConversationScope,
     ) -> CampaignPlan | None:
+        campaign = await self.get_campaign(campaign_id=campaign_id, scope=scope)
+        if campaign.status is not CampaignStatus.PLAN_READY:
+            return None
         return await self._repository.get_plan(
             campaign_id=campaign_id,
             scope=scope,
@@ -135,13 +148,47 @@ class CampaignService:
             event=CampaignEvent.GENERATION_REQUESTED,
         )
         try:
-            return await generator.generate(brief)
-        except Exception:
-            await self.transition(
-                campaign_id=campaign_id,
-                scope=scope,
-                event=CampaignEvent.GENERATION_FAILED,
-            )
+            repair_issues: tuple[str, ...] = ()
+            for attempt in range(self.MAX_PLAN_GENERATION_ATTEMPTS):
+                try:
+                    candidate = await generator.generate(
+                        brief,
+                        repair_issues=repair_issues,
+                    )
+                    plan = self._plan_validator.validate(brief, candidate)
+                except (ProviderResponseError, CampaignPlanValidationError) as exc:
+                    if attempt + 1 == self.MAX_PLAN_GENERATION_ATTEMPTS:
+                        raise
+                    repair_issues = _repair_issues(exc)
+                    continue
+
+                saved = await self._repository.save_plan(
+                    campaign_id=campaign_id,
+                    scope=scope,
+                    plan=plan,
+                )
+                if saved is None:
+                    raise CampaignNotFoundError
+                await self.transition(
+                    campaign_id=campaign_id,
+                    scope=scope,
+                    event=CampaignEvent.PLAN_PERSISTED,
+                )
+                return saved
+            raise RuntimeError("Campaign Plan generation attempts exhausted")
+        except Exception as failure:
+            try:
+                await self.transition(
+                    campaign_id=campaign_id,
+                    scope=scope,
+                    event=CampaignEvent.GENERATION_FAILED,
+                )
+            except Exception as recovery_error:
+                # A failed request transaction rolls all generation writes back.
+                failure.add_note(
+                    "Campaign generation recovery failed with "
+                    f"{type(recovery_error).__name__}; caller must roll back the transaction"
+                )
             raise
 
     async def update_brief_from_extraction(
@@ -291,6 +338,14 @@ def _brief_changes(
         for name, candidate in extracted_fields.model_dump().items()
         if candidate is not None and candidate != getattr(current, name)
     }
+
+
+def _repair_issues(
+    error: ProviderResponseError | CampaignPlanValidationError,
+) -> tuple[str, ...]:
+    if isinstance(error, CampaignPlanValidationError):
+        return error.issues
+    return ("structured_output.invalid",)
 
 
 __all__ = [

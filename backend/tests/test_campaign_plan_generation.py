@@ -132,6 +132,27 @@ async def test_generator_uses_confirmed_brief_and_returns_validated_plan() -> No
 
 
 @pytest.mark.asyncio
+async def test_generator_repair_context_keeps_same_brief_and_safe_issue_codes() -> None:
+    brief = CampaignBrief(
+        business="FitZone Gym",
+        goal="Acquire student members",
+        audience="Students",
+        budget_amount=300,
+        budget_currency="EUR",
+    )
+    llm = FakeLLM(json.dumps(_plan_data()))
+
+    await CampaignPlanGenerator(llm).generate(
+        brief,
+        repair_issues=("budget.total_mismatch",),
+    )
+
+    context = json.loads(llm.requests[0].messages[1].content)
+    assert context["confirmed_campaign_brief"] == brief.model_dump(mode="json")
+    assert context["previous_validation_issues"] == ["budget.total_mismatch"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "response",
     [
@@ -151,19 +172,34 @@ async def test_generator_rejects_malformed_or_schema_invalid_output(response: st
 
 
 @pytest.mark.asyncio
-async def test_ready_campaign_starts_generation_without_persisting_plan() -> None:
+async def test_ready_campaign_generates_persists_and_reaches_plan_ready() -> None:
     campaign_id = uuid4()
     scope = ConversationScope(user_id=uuid4(), project_id=uuid4())
-    brief = CampaignBrief(business="Acme", goal="Grow", audience="Retailers")
+    brief = CampaignBrief(
+        business="FitZone Gym",
+        goal="Acquire student members",
+        audience="Students",
+        location="Prishtina",
+        channels=["Instagram"],
+        budget_amount=300,
+        budget_currency="EUR",
+    )
     plan = CampaignPlan.model_validate(_plan_data())
     repository = Mock(spec=CampaignRepository)
     repository.get_brief = AsyncMock(return_value=brief)
     repository.get_campaign = AsyncMock(
-        return_value=_campaign(campaign_id=campaign_id, status=CampaignStatus.READY)
+        side_effect=[
+            _campaign(campaign_id=campaign_id, status=CampaignStatus.READY),
+            _campaign(campaign_id=campaign_id, status=CampaignStatus.GENERATING),
+        ]
     )
     repository.update_status = AsyncMock(
-        return_value=_campaign(campaign_id=campaign_id, status=CampaignStatus.GENERATING)
+        side_effect=[
+            _campaign(campaign_id=campaign_id, status=CampaignStatus.GENERATING),
+            _campaign(campaign_id=campaign_id, status=CampaignStatus.PLAN_READY),
+        ]
     )
+    repository.save_plan = AsyncMock(return_value=plan)
     generator = Mock(spec=CampaignPlanGenerator)
     generator.generate = AsyncMock(return_value=plan)
 
@@ -174,13 +210,20 @@ async def test_ready_campaign_starts_generation_without_persisting_plan() -> Non
     )
 
     assert result == plan
-    generator.generate.assert_awaited_once_with(brief)
-    repository.update_status.assert_awaited_once_with(
+    generator.generate.assert_awaited_once_with(brief, repair_issues=())
+    assert repository.update_status.await_args_list[0].kwargs == {
+        "campaign_id": campaign_id,
+        "scope": scope,
+        "status": CampaignStatus.GENERATING,
+    }
+    assert repository.update_status.await_args_list[1].kwargs["status"] is (
+        CampaignStatus.PLAN_READY
+    )
+    repository.save_plan.assert_awaited_once_with(
         campaign_id=campaign_id,
         scope=scope,
-        status=CampaignStatus.GENERATING,
+        plan=plan,
     )
-    repository.save_plan.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -249,6 +292,6 @@ async def test_provider_failure_restores_ready_and_preserves_brief() -> None:
     )
     assert repository.update_status.await_args_list[1].kwargs["status"] is CampaignStatus.READY
     assert await repository.get_brief(campaign_id=campaign_id, scope=scope) == brief
-    generator.generate.assert_awaited_once_with(brief)
+    generator.generate.assert_awaited_once_with(brief, repair_issues=())
     repository.update_brief.assert_not_called()
     repository.save_plan.assert_not_called()

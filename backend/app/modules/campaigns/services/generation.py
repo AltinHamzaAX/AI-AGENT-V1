@@ -18,12 +18,20 @@ class CampaignPlanGenerator:
     def __init__(self, llm: LLMProvider) -> None:
         self._llm = llm
 
-    async def generate(self, brief: CampaignBrief) -> CampaignPlan:
+    async def generate(
+        self,
+        brief: CampaignBrief,
+        *,
+        repair_issues: tuple[str, ...] = (),
+    ) -> CampaignPlan:
         response = await self._llm.complete(
             LLMRequest(
                 messages=(
                     LLMMessage(role="system", content=_generation_prompt()),
-                    LLMMessage(role="user", content=_brief_context(brief)),
+                    LLMMessage(
+                        role="user",
+                        content=_brief_context(brief, repair_issues=repair_issues),
+                    ),
                 ),
                 temperature=0.2,
                 response_format="json",
@@ -37,9 +45,18 @@ class CampaignPlanGenerator:
             ) from exc
 
 
-def _brief_context(brief: CampaignBrief) -> str:
+def _brief_context(
+    brief: CampaignBrief,
+    *,
+    repair_issues: tuple[str, ...],
+) -> str:
+    context: dict[str, object] = {
+        "confirmed_campaign_brief": brief.model_dump(mode="json")
+    }
+    if repair_issues:
+        context["previous_validation_issues"] = list(repair_issues)
     return json.dumps(
-        {"confirmed_campaign_brief": brief.model_dump(mode="json")},
+        context,
         ensure_ascii=False,
         sort_keys=True,
     )
@@ -71,6 +88,8 @@ Quality rules:
   present an invented duration as confirmed.
 - Provide actionable content direction, relevant KPIs and practical next steps.
 - Ensure every required schema field is present and use null only where the schema permits it.
+- If previous_validation_issues is present, correct those safe validation issues while using
+  the same confirmed_campaign_brief. Do not alter or reinterpret the Brief.
 """
 
 
