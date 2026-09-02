@@ -36,6 +36,7 @@ class CampaignDetailResponse(CampaignSchema):
     status: CampaignStatus
     brief: CampaignBrief
     plan_available: bool
+    plan_outdated: bool
     created_at: datetime
     updated_at: datetime
 
@@ -46,6 +47,7 @@ class CampaignDetailResponse(CampaignSchema):
         *,
         brief: CampaignBrief,
         plan_available: bool,
+        plan_outdated: bool,
     ) -> Self:
         return cls(
             id=campaign.id,
@@ -53,6 +55,7 @@ class CampaignDetailResponse(CampaignSchema):
             status=campaign.status,
             brief=brief,
             plan_available=plan_available,
+            plan_outdated=plan_outdated,
             created_at=campaign.created_at,
             updated_at=campaign.updated_at,
         )

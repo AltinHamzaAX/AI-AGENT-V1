@@ -13,6 +13,9 @@ const activeId = computed(() => props.conversationId)
 const activeMessages = computed(() => activeId.value ? workspace.messages.value[activeId.value] || [] : [])
 const context = computed(() => activeId.value ? workspace.contexts.value[activeId.value] : undefined)
 const campaign = computed(() => activeId.value ? workspace.campaignStates.value[activeId.value] : undefined)
+const campaignPlan = computed(() => activeId.value ? workspace.campaignPlans.value[activeId.value] : undefined)
+const campaignGenerating = computed(() => activeId.value ? workspace.campaignGenerating.value[activeId.value] === true : false)
+const campaignExporting = computed(() => activeId.value ? workspace.campaignExporting.value[activeId.value] === true : false)
 const progress = computed(() => activeId.value ? workspace.progress.value[activeId.value] : undefined)
 const activity = computed(() => activeId.value ? workspace.activity.value[activeId.value] || 'idle' : 'idle')
 const knownContext = computed(() => CONTEXT_LABELS
@@ -26,11 +29,16 @@ const processingLabel = computed(() => {
   return ''
 })
 const campaignStatusLabel = computed(() => {
+  if (campaignGenerating.value) return 'Generating your Campaign Plan'
   const status: CampaignStatus | undefined = campaign.value?.status
   if (status === 'READY') return 'Ready for Campaign Plan generation'
   if (status === 'GENERATING') return 'Campaign Plan is being generated'
   if (status === 'PLAN_READY') return 'Campaign Plan ready'
   return 'Still collecting campaign information'
+})
+const campaignActionLabel = computed(() => {
+  if (campaignGenerating.value) return 'Generating...'
+  return campaign.value?.plan_outdated ? 'Regenerate Campaign Plan' : 'Generate Campaign Plan'
 })
 const campaignBriefItems = computed(() => {
   const brief = campaign.value?.brief
@@ -100,6 +108,14 @@ async function submit() {
   }
 }
 
+async function generateCampaign() {
+  if (activeId.value) await workspace.generateCampaign(activeId.value)
+}
+
+async function exportCampaign() {
+  if (activeId.value) await workspace.exportCampaign(activeId.value)
+}
+
 </script>
 
 <template>
@@ -119,7 +135,7 @@ async function submit() {
       <template v-else>
         <section class="messages">
           <section v-if="type === 'campaign' && campaign" class="campaign-status" :class="campaign.status.toLowerCase()" aria-live="polite">
-            <div><strong>{{ campaignStatusLabel }}</strong><span v-if="campaign.status === 'READY'">You can generate a plan when that action is available.</span></div>
+            <div><div><strong>{{ campaignStatusLabel }}</strong><span v-if="campaign.status === 'BRIEFING'">Keep chatting so Promotiva can complete the essential context.</span><span v-else-if="campaign.status === 'READY' && campaign.plan_outdated && !campaignGenerating">Your previous plan is outdated because the Campaign Brief changed. Regenerate it when you are ready.</span><span v-else-if="campaign.status === 'READY' && !campaignGenerating">Your brief has enough information. Generation starts only when you choose it.</span></div><button v-if="campaign.status === 'READY'" class="campaign-generate" :disabled="campaignGenerating" @click="generateCampaign">{{ campaignActionLabel }}</button></div>
             <div v-if="campaignBriefItems.length" class="campaign-brief"><span v-for="[label, value] in campaignBriefItems" :key="label"><b>{{ label }}</b>{{ value }}</span></div>
           </section>
           <div v-if="knownContext.length" class="context-bar">
@@ -143,6 +159,8 @@ async function submit() {
             </div>
             <p v-if="progress.error" class="error-message">{{ progress.error }}</p>
           </section>
+          <section v-if="type === 'campaign' && campaignGenerating" class="campaign-generation" aria-live="polite" aria-busy="true"><i class="typing-dots"><b /><b /><b /></i><div><strong>Building your Campaign Plan</strong><p>Your confirmed brief stays visible while the backend generates and validates the plan.</p></div></section>
+          <CampaignPlanView v-if="type === 'campaign' && campaign?.status === 'PLAN_READY' && campaignPlan" :plan="campaignPlan" :exporting="campaignExporting" @export="exportCampaign" />
         </section>
       </template>
       <footer class="composer-wrap">
@@ -153,3 +171,7 @@ async function submit() {
     </main>
   </div>
 </template>
+
+<style scoped>
+.campaign-status>div:first-child>div{display:flex;flex-direction:column;gap:4px}.campaign-generate{flex:0 0 auto;border:0;border-radius:10px;background:#244c36;color:#fff;padding:9px 13px;font-size:12px;font-weight:800;cursor:pointer}.campaign-generate:disabled{cursor:wait;opacity:.55}.campaign-generation{display:flex;align-items:center;gap:14px;margin:18px 0;padding:17px 19px;border:1px solid #d7e4d9;border-radius:15px;background:#f4f8f4}.campaign-generation strong{font-size:13px}.campaign-generation p{margin:3px 0 0;color:#707970;font-size:12px}@media(max-width:700px){.campaign-status>div:first-child{align-items:stretch;flex-direction:column}.campaign-generate{width:100%}}
+</style>

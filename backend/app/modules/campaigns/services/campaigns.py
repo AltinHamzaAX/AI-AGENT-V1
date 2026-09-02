@@ -134,6 +134,23 @@ class CampaignService:
             scope=scope,
         )
 
+    async def is_plan_outdated(
+        self,
+        *,
+        campaign_id: UUID,
+        scope: ConversationScope,
+    ) -> bool:
+        campaign = await self.get_campaign(campaign_id=campaign_id, scope=scope)
+        if campaign.status is CampaignStatus.PLAN_READY:
+            return False
+        return (
+            await self._repository.get_plan(
+                campaign_id=campaign_id,
+                scope=scope,
+            )
+            is not None
+        )
+
     async def generate_plan(
         self,
         *,

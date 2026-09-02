@@ -285,6 +285,7 @@ async def test_get_campaign_reports_only_a_current_plan_as_available(
     assert detail.json()["brief"] == _ready_brief().model_dump(mode="json")
     assert detail.json()["status"] == "READY"
     assert detail.json()["plan_available"] is False
+    assert detail.json()["plan_outdated"] is False
 
     async with campaign_api_session_factory.begin() as session:
         repository = SQLAlchemyCampaignRepository(session)
@@ -297,6 +298,7 @@ async def test_get_campaign_reports_only_a_current_plan_as_available(
     stale_detail = await client.get(f"/api/campaigns/{campaign_id}", headers=headers)
     stale_plan = await client.get(f"/api/campaigns/{campaign_id}/plan", headers=headers)
     assert stale_detail.json()["plan_available"] is False
+    assert stale_detail.json()["plan_outdated"] is True
     assert stale_plan.status_code == 404
     assert generator.briefs == []
 
@@ -312,6 +314,7 @@ async def test_get_campaign_reports_only_a_current_plan_as_available(
     current_detail = await client.get(f"/api/campaigns/{campaign_id}", headers=headers)
     current_plan = await client.get(f"/api/campaigns/{campaign_id}/plan", headers=headers)
     assert current_detail.json()["plan_available"] is True
+    assert current_detail.json()["plan_outdated"] is False
     assert current_plan.status_code == 200
     assert current_plan.json()["campaign_name"] == "Physically persisted old plan"
     assert generator.briefs == []

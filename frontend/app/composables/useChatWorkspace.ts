@@ -3,7 +3,9 @@ import type {
   ChatActivityState,
   CampaignCreate,
   CampaignDetail,
+  CampaignGenerateResponse,
   CampaignMessageResponse,
+  CampaignPlan,
   ChatProgress,
   ChatState,
   ChatTurn,
@@ -48,7 +50,10 @@ export function useChatWorkspace(type: ConversationType) {
   const contexts = useState<Record<string, ConversationContext>>('chat-contexts', () => ({}))
   const campaignIds = useState<Record<string, string>>('campaign-ids', () => ({}))
   const campaignStates = useState<Record<string, CampaignDetail>>('campaign-states', () => ({}))
+  const campaignPlans = useState<Record<string, CampaignPlan>>('campaign-plans', () => ({}))
   const campaignSending = useState<Record<string, boolean>>('campaign-sending', () => ({}))
+  const campaignGenerating = useState<Record<string, boolean>>('campaign-generating', () => ({}))
+  const campaignExporting = useState<Record<string, boolean>>('campaign-exporting', () => ({}))
   const progress = useState<Record<string, ChatProgress>>('chat-progress', () => ({}))
   const activity = useState<Record<string, ChatActivityState>>('chat-activity', () => ({}))
   const tracked = useState<string[]>('chat-tracked-generations', () => [])
@@ -171,6 +176,12 @@ export function useChatWorkspace(type: ConversationType) {
     return detail
   }
 
+  async function loadCampaignPlan(conversationId: string, campaignId: string) {
+    const plan = await request<CampaignPlan>(`${api}/campaigns/${campaignId}/plan`)
+    campaignPlans.value = { ...campaignPlans.value, [conversationId]: plan }
+    return plan
+  }
+
   async function findCampaign(conversationId: string): Promise<CampaignCreate> {
     return await request<CampaignCreate>(
       `${api}/campaigns?conversation_id=${encodeURIComponent(conversationId)}`,
@@ -237,7 +248,15 @@ export function useChatWorkspace(type: ConversationType) {
     const inFlight = (messages.value[id] || []).filter(item => item.id.startsWith(PENDING_PREFIX))
     messages.value = { ...messages.value, [id]: [...page.items, ...inFlight] }
     if (type !== 'post') {
-      await resolveCampaign(id, false)
+      const campaign = await resolveCampaign(id, false)
+      if (campaign?.status === 'PLAN_READY') {
+        try {
+          await loadCampaignPlan(id, campaign.id)
+        }
+        catch (cause) {
+          error.value = messageOf(cause, 'Could not load the Campaign Plan.')
+        }
+      }
       return
     }
     const state = await request<ChatState>(`${api}/posts/conversations/${id}/state`)
@@ -318,7 +337,18 @@ export function useChatWorkspace(type: ConversationType) {
         const current = campaignStates.value[id]
         if (current) campaignStates.value = {
           ...campaignStates.value,
-          [id]: { ...current, status: response.status, brief: response.brief },
+          [id]: {
+            ...current,
+            status: response.status,
+            brief: response.brief,
+            plan_available: response.status === 'PLAN_READY',
+          },
+        }
+        try {
+          await loadCampaign(id, campaign.id)
+        }
+        catch (cause) {
+          error.value = messageOf(cause, 'Could not refresh Campaign status.')
         }
         setActivity(id, 'idle')
         return null
@@ -368,6 +398,102 @@ export function useChatWorkspace(type: ConversationType) {
         campaignSending.value = next
       }
     }
+  }
+
+  async function generateCampaign(conversationId: string) {
+    if (type !== 'campaign' || campaignGenerating.value[conversationId]) return
+    campaignGenerating.value = { ...campaignGenerating.value, [conversationId]: true }
+    error.value = null
+    try {
+      const campaign = await resolveCampaign(conversationId, false)
+      if (!campaign || campaign.status !== 'READY') return
+      const response = await request<CampaignGenerateResponse>(
+        `${api}/campaigns/${campaign.id}/generate`,
+        { method: 'POST' },
+      )
+      campaignPlans.value = { ...campaignPlans.value, [conversationId]: response.plan }
+      campaignStates.value = {
+        ...campaignStates.value,
+        [conversationId]: {
+          ...campaign,
+          status: response.status,
+          plan_available: response.status === 'PLAN_READY',
+          plan_outdated: false,
+        },
+      }
+    }
+    catch (cause) {
+      error.value = messageOf(cause, 'Campaign Plan generation failed.')
+    }
+    finally {
+      const next = { ...campaignGenerating.value }
+      delete next[conversationId]
+      campaignGenerating.value = next
+    }
+  }
+
+  async function exportCampaign(conversationId: string) {
+    if (type !== 'campaign' || campaignExporting.value[conversationId]) return
+    campaignExporting.value = { ...campaignExporting.value, [conversationId]: true }
+    error.value = null
+    let objectUrl: string | undefined
+    try {
+      const campaign = await resolveCampaign(conversationId, false)
+      if (!campaign || campaign.status !== 'PLAN_READY') return
+      let response: Response
+      try {
+        response = await fetch(`${api}/campaigns/${campaign.id}/export`, {
+          headers: headers(),
+        })
+      }
+      catch {
+        throw new Error('Cannot connect to the Promotiva API. Start the backend on port 8000 and try again.')
+      }
+      if (!response.ok) {
+        throw new WorkspaceRequestError(await readError(response), response.status)
+      }
+      const filename = safeZipFilename(response.headers.get('content-disposition'))
+      objectUrl = URL.createObjectURL(await response.blob())
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+    }
+    catch (cause) {
+      error.value = messageOf(cause, 'Campaign export failed.')
+    }
+    finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      const next = { ...campaignExporting.value }
+      delete next[conversationId]
+      campaignExporting.value = next
+    }
+  }
+
+  function safeZipFilename(contentDisposition: string | null): string {
+    const fallback = 'campaign-export.zip'
+    if (!contentDisposition) return fallback
+    const encoded = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+    const quoted = contentDisposition.match(/filename="([^"]+)"/i)?.[1]
+    const plain = contentDisposition.match(/filename=([^;]+)/i)?.[1]?.trim()
+    let candidate = encoded || quoted || plain
+    if (!candidate) return fallback
+    if (encoded) {
+      try {
+        candidate = decodeURIComponent(encoded)
+      }
+      catch {
+        return fallback
+      }
+    }
+    if (
+      candidate.length > 160
+      || !candidate.toLowerCase().endsWith('.zip')
+      || /[\\/\x00-\x1f\x7f]/.test(candidate)
+    ) return fallback
+    return candidate
   }
 
   /**
@@ -587,6 +713,9 @@ export function useChatWorkspace(type: ConversationType) {
     messages,
     contexts,
     campaignStates,
+    campaignPlans,
+    campaignGenerating,
+    campaignExporting,
     progress,
     activity,
     attachments,
@@ -596,6 +725,8 @@ export function useChatWorkspace(type: ConversationType) {
     createConversation,
     open,
     send,
+    generateCampaign,
+    exportCampaign,
     addFiles,
     removeAttachment,
     clearAttachments,

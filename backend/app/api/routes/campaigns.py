@@ -135,6 +135,10 @@ async def get_campaign(
         campaign = await service.get_campaign(campaign_id=campaign_id, scope=scope)
         brief = await service.get_brief(campaign_id=campaign_id, scope=scope)
         plan = await service.get_plan(campaign_id=campaign_id, scope=scope)
+        plan_outdated = await service.is_plan_outdated(
+            campaign_id=campaign_id,
+            scope=scope,
+        )
     except CampaignNotFoundError as exc:
         raise _campaign_not_found() from exc
     except SQLAlchemyError as exc:
@@ -152,6 +156,7 @@ async def get_campaign(
         campaign,
         brief=brief,
         plan_available=plan is not None,
+        plan_outdated=plan_outdated,
     )
 
 
