@@ -3,6 +3,7 @@
 from app.modules.campaigns.domain.entities import Campaign
 from app.modules.campaigns.domain.enums import CampaignStatus
 from app.modules.campaigns.domain.exceptions import (
+    CampaignExportError,
     CampaignNotFoundError,
     CampaignPlanValidationError,
     CampaignSourceNotFoundError,
@@ -21,6 +22,7 @@ __all__ = [
     "BUSINESS_REQUIREMENT",
     "Campaign",
     "CampaignEvent",
+    "CampaignExportError",
     "CampaignNotFoundError",
     "CampaignPlanValidationError",
     "CampaignReadiness",

@@ -1,6 +1,9 @@
+import json
 from collections.abc import AsyncIterator
+from io import BytesIO
 from typing import Any
 from uuid import UUID, uuid4
+from zipfile import ZipFile
 
 import pytest
 import pytest_asyncio
@@ -8,14 +11,18 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.dependencies.campaigns import get_campaign_plan_generator
+from app.dependencies.campaigns import (
+    get_campaign_export_service,
+    get_campaign_plan_generator,
+)
 from app.infrastructure.database.base import Base
 from app.infrastructure.database.repositories.campaigns import SQLAlchemyCampaignRepository
 from app.infrastructure.database.session import get_db_transaction
 from app.integrations.llm import ProviderError
 from app.main import app
-from app.modules.campaigns.domain import CampaignStatus
+from app.modules.campaigns.domain import CampaignExportError, CampaignStatus
 from app.modules.campaigns.schemas import CampaignBrief, CampaignPlan
+from app.modules.campaigns.services import CampaignExportService
 from app.shared.conversations.domain import ConversationScope
 
 
@@ -393,3 +400,220 @@ async def test_get_campaign_hides_missing_and_out_of_scope_campaigns(
     assert out_of_scope.status_code == 404
     assert missing.json() == out_of_scope.json() == {"detail": "Campaign not found"}
     assert generator.briefs == []
+
+
+@pytest.mark.asyncio
+async def test_export_returns_exact_current_campaign_package_without_state_change(
+    campaign_api: tuple[AsyncClient, FakeCampaignPlanGenerator],
+    campaign_api_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    client, generator = campaign_api
+    headers = _headers()
+    brief = _ready_brief()
+    created = await _campaign(client, headers, brief=brief)
+    campaign_id = UUID(created["id"])
+    plan = _plan(campaign_name="Safe export (test) \\ ../campaign")
+    async with campaign_api_session_factory.begin() as session:
+        repository = SQLAlchemyCampaignRepository(session)
+        saved = await repository.save_plan(
+            campaign_id=campaign_id,
+            scope=_scope(headers),
+            plan=plan,
+        )
+        campaign = await repository.update_status(
+            campaign_id=campaign_id,
+            scope=_scope(headers),
+            status=CampaignStatus.PLAN_READY,
+        )
+        assert saved == plan
+        assert campaign is not None
+
+    response = await client.get(f"/api/campaigns/{campaign_id}/export", headers=headers)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="campaign-export.zip"'
+    )
+    with ZipFile(BytesIO(response.content)) as archive:
+        assert archive.namelist() == [
+            "campaign-plan.pdf",
+            "campaign-plan.json",
+            "campaign-brief.json",
+        ]
+        exported_plan = CampaignPlan.model_validate(
+            json.loads(archive.read("campaign-plan.json"))
+        )
+        exported_brief = CampaignBrief.model_validate(
+            json.loads(archive.read("campaign-brief.json"))
+        )
+        pdf = archive.read("campaign-plan.pdf")
+    assert exported_plan == plan
+    assert exported_brief == brief
+    assert pdf.startswith(b"%PDF-")
+    for section in (
+        b"Executive Summary",
+        b"Objective",
+        b"Target Audience",
+        b"Channel Strategies",
+        b"Content Directions",
+        b"Timeline",
+        b"KPIs",
+        b"Assumptions or Risks",
+        b"Next Steps",
+    ):
+        assert section in pdf
+    assert generator.briefs == []
+
+    async with campaign_api_session_factory() as session:
+        repository = SQLAlchemyCampaignRepository(session)
+        persisted_campaign = await repository.get_campaign(
+            campaign_id=campaign_id,
+            scope=_scope(headers),
+        )
+        persisted_brief = await repository.get_brief(
+            campaign_id=campaign_id,
+            scope=_scope(headers),
+        )
+        persisted_plan = await repository.get_plan(
+            campaign_id=campaign_id,
+            scope=_scope(headers),
+        )
+    assert persisted_campaign is not None
+    assert persisted_campaign.status is CampaignStatus.PLAN_READY
+    assert persisted_brief == brief
+    assert persisted_plan == plan
+
+
+@pytest.mark.asyncio
+async def test_export_rejects_stale_briefing_missing_and_out_of_scope_campaigns(
+    campaign_api: tuple[AsyncClient, FakeCampaignPlanGenerator],
+    campaign_api_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    client, generator = campaign_api
+    owner = _headers()
+    stale = await _campaign(client, owner, brief=_ready_brief())
+    briefing = await _campaign(client, owner)
+    async with campaign_api_session_factory.begin() as session:
+        repository = SQLAlchemyCampaignRepository(session)
+        saved = await repository.save_plan(
+            campaign_id=UUID(stale["id"]),
+            scope=_scope(owner),
+            plan=_plan(campaign_name="Outdated plan"),
+        )
+        assert saved is not None
+
+    stale_response = await client.get(
+        f"/api/campaigns/{stale['id']}/export",
+        headers=owner,
+    )
+    briefing_response = await client.get(
+        f"/api/campaigns/{briefing['id']}/export",
+        headers=owner,
+    )
+    missing_response = await client.get(f"/api/campaigns/{uuid4()}/export", headers=owner)
+    out_of_scope_response = await client.get(
+        f"/api/campaigns/{stale['id']}/export",
+        headers=_headers(),
+    )
+
+    assert stale_response.status_code == 404
+    assert stale_response.json() == {"detail": "Campaign Plan not available"}
+    assert briefing_response.status_code == 404
+    assert missing_response.json() == {"detail": "Campaign not found"}
+    assert out_of_scope_response.json() == {"detail": "Campaign not found"}
+    assert generator.briefs == []
+
+
+@pytest.mark.asyncio
+async def test_export_failure_is_generic_and_leaves_persisted_data_untouched(
+    campaign_api: tuple[AsyncClient, FakeCampaignPlanGenerator],
+    campaign_api_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    client, generator = campaign_api
+    headers = _headers()
+    brief = _ready_brief()
+    plan = _plan()
+    created = await _campaign(client, headers, brief=brief)
+    campaign_id = UUID(created["id"])
+    async with campaign_api_session_factory.begin() as session:
+        repository = SQLAlchemyCampaignRepository(session)
+        await repository.save_plan(
+            campaign_id=campaign_id,
+            scope=_scope(headers),
+            plan=plan,
+        )
+        await repository.update_status(
+            campaign_id=campaign_id,
+            scope=_scope(headers),
+            status=CampaignStatus.PLAN_READY,
+        )
+
+    class FailingExporter:
+        def export(self, *, brief: CampaignBrief, plan: CampaignPlan) -> None:
+            raise CampaignExportError("C:\\private\\temporary\\campaign.pdf")
+
+    app.dependency_overrides[get_campaign_export_service] = FailingExporter
+    response = await client.get(f"/api/campaigns/{campaign_id}/export", headers=headers)
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Campaign export could not be created"}
+    assert "private" not in response.text
+    assert generator.briefs == []
+    async with campaign_api_session_factory() as session:
+        repository = SQLAlchemyCampaignRepository(session)
+        persisted_campaign = await repository.get_campaign(
+            campaign_id=campaign_id,
+            scope=_scope(headers),
+        )
+        persisted_brief = await repository.get_brief(
+            campaign_id=campaign_id,
+            scope=_scope(headers),
+        )
+        persisted_plan = await repository.get_plan(
+            campaign_id=campaign_id,
+            scope=_scope(headers),
+        )
+    assert persisted_campaign is not None
+    assert persisted_campaign.status is CampaignStatus.PLAN_READY
+    assert persisted_brief == brief
+    assert persisted_plan == plan
+
+
+def test_campaign_export_service_is_deterministic_and_uses_no_persistent_files(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    brief = _ready_brief()
+    plan = _plan()
+    brief_before = brief.model_dump()
+    plan_before = plan.model_dump()
+    service = CampaignExportService()
+
+    first = service.export(brief=brief, plan=plan)
+    second = service.export(brief=brief, plan=plan)
+
+    assert first == second
+    assert brief.model_dump() == brief_before
+    assert plan.model_dump() == plan_before
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_campaign_pdf_preserves_multilingual_unicode_text() -> None:
+    multilingual = "Fushatë për nxënësit e Kosovës. Привет, кампания."
+    brief = _ready_brief()
+    plan = _plan().model_copy(update={"executive_summary": multilingual})
+
+    result = CampaignExportService().export(brief=brief, plan=plan)
+
+    with ZipFile(BytesIO(result.content)) as archive:
+        pdf = archive.read("campaign-plan.pdf")
+        exported_plan = CampaignPlan.model_validate(
+            json.loads(archive.read("campaign-plan.json"))
+        )
+    assert exported_plan.executive_summary == multilingual
+    # ReportLab's embedded TrueType font records every rendered glyph in ToUnicode.
+    for character in set(multilingual):
+        if ord(character) > 127:
+            assert f"<{ord(character):04X}>".encode() in pdf

@@ -1,9 +1,10 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.dependencies.campaigns import (
+    CampaignExportServiceDependency,
     CampaignMessagingServiceDependency,
     CampaignPlanGeneratorDependency,
     CampaignServiceDependency,
@@ -15,6 +16,7 @@ from app.integrations.llm import (
     ProviderRateLimitError,
 )
 from app.modules.campaigns.domain import (
+    CampaignExportError,
     CampaignNotFoundError,
     CampaignPlanValidationError,
     CampaignSourceNotFoundError,
@@ -150,6 +152,44 @@ async def get_campaign_plan(
     if plan is None:
         raise HTTPException(status_code=404, detail="Campaign Plan not available")
     return plan
+
+
+@router.get(
+    "/{campaign_id}/export",
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+async def export_campaign(
+    campaign_id: UUID,
+    scope: ConversationScopeDependency,
+    campaigns: CampaignServiceDependency,
+    exporter: CampaignExportServiceDependency,
+) -> Response:
+    try:
+        await campaigns.get_campaign(campaign_id=campaign_id, scope=scope)
+        brief = await campaigns.get_brief(campaign_id=campaign_id, scope=scope)
+        plan = await campaigns.get_plan(campaign_id=campaign_id, scope=scope)
+    except CampaignNotFoundError as exc:
+        raise _campaign_not_found() from exc
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Campaign export is temporarily unavailable",
+        ) from exc
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Campaign Plan not available")
+    try:
+        result = exporter.export(brief=brief, plan=plan)
+    except CampaignExportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Campaign export could not be created",
+        ) from exc
+    return Response(
+        content=result.content,
+        media_type=result.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
+    )
 
 
 @router.post(

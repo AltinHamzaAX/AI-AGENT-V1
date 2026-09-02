@@ -16,7 +16,12 @@ class CampaignPlanValidationError(ValueError):
         super().__init__("Campaign Plan validation failed: " + ", ".join(issues))
 
 
+class CampaignExportError(RuntimeError):
+    pass
+
+
 __all__ = [
+    "CampaignExportError",
     "CampaignNotFoundError",
     "CampaignPlanValidationError",
     "CampaignSourceNotFoundError",

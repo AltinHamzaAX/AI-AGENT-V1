@@ -10,6 +10,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY --from=uv /uv /uvx /bin/
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
