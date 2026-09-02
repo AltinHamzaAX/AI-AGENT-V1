@@ -8,17 +8,19 @@ from zipfile import ZipFile
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app.dependencies.campaigns import (
     get_campaign_export_service,
     get_campaign_plan_generator,
+    get_campaign_service,
 )
 from app.infrastructure.database.base import Base
 from app.infrastructure.database.repositories.campaigns import SQLAlchemyCampaignRepository
 from app.infrastructure.database.session import get_db_transaction
-from app.integrations.llm import ProviderError
+from app.integrations.llm import ProviderError, ProviderQuotaError, ProviderRateLimitError
 from app.main import app
 from app.modules.campaigns.domain import CampaignExportError, CampaignStatus
 from app.modules.campaigns.schemas import CampaignBrief, CampaignPlan
@@ -383,6 +385,34 @@ async def test_generate_provider_and_validation_failures_are_safely_mapped(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure",
+    [
+        ProviderRateLimitError("raw provider rate-limit response"),
+        ProviderQuotaError("raw provider quota response"),
+    ],
+)
+async def test_generate_rate_limit_and_quota_are_safely_mapped(
+    campaign_api: tuple[AsyncClient, FakeCampaignPlanGenerator],
+    failure: Exception,
+) -> None:
+    client, generator = campaign_api
+    headers = _headers()
+    created = await _campaign(client, headers, brief=_ready_brief())
+    generator.failure = failure
+
+    response = await client.post(
+        f"/api/campaigns/{created['id']}/generate",
+        headers=headers,
+    )
+
+    assert response.status_code == 429
+    assert "raw provider" not in response.text
+    detail = await client.get(f"/api/campaigns/{created['id']}", headers=headers)
+    assert detail.json()["status"] == "READY"
+
+
+@pytest.mark.asyncio
 async def test_get_campaign_hides_missing_and_out_of_scope_campaigns(
     campaign_api: tuple[AsyncClient, FakeCampaignPlanGenerator],
 ) -> None:
@@ -391,15 +421,71 @@ async def test_get_campaign_hides_missing_and_out_of_scope_campaigns(
     created = await _campaign(client, owner, brief=_ready_brief())
 
     missing = await client.get(f"/api/campaigns/{uuid4()}", headers=owner)
-    out_of_scope = await client.get(
+    cross_user = await client.get(
         f"/api/campaigns/{created['id']}",
-        headers=_headers(),
+        headers={**owner, "X-User-ID": str(uuid4())},
+    )
+    cross_project = await client.get(
+        f"/api/campaigns/{created['id']}",
+        headers={**owner, "X-Project-ID": str(uuid4())},
     )
 
     assert missing.status_code == 404
-    assert out_of_scope.status_code == 404
-    assert missing.json() == out_of_scope.json() == {"detail": "Campaign not found"}
+    assert cross_user.status_code == 404
+    assert cross_project.status_code == 404
+    assert missing.json() == cross_user.json() == cross_project.json() == {
+        "detail": "Campaign not found"
+    }
     assert generator.briefs == []
+
+
+@pytest.mark.asyncio
+async def test_database_failure_is_safe_and_does_not_expose_credentials(
+    campaign_api: tuple[AsyncClient, FakeCampaignPlanGenerator],
+) -> None:
+    client, _ = campaign_api
+    credential = "postgresql://private-user:private-password@database/promotiva"
+
+    class FailingCampaignService:
+        async def get_campaign(self, **_: Any) -> None:
+            raise SQLAlchemyError(credential)
+
+    app.dependency_overrides[get_campaign_service] = FailingCampaignService
+    response = await client.get(f"/api/campaigns/{uuid4()}", headers=_headers())
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Campaign retrieval is temporarily unavailable"
+    }
+    assert credential not in response.text
+    assert "private-password" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_unexpected_failure_is_generic_and_logs_only_safe_context(
+    campaign_api: tuple[AsyncClient, FakeCampaignPlanGenerator],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client, _ = campaign_api
+    secret = "GEMINI_API_KEY=private-campaign-key"
+
+    class FailingCampaignService:
+        async def get_campaign(self, **_: Any) -> None:
+            raise RuntimeError(f"renderer failed at C:\\private\\font.ttf; {secret}")
+
+    app.dependency_overrides[get_campaign_service] = FailingCampaignService
+    campaign_id = uuid4()
+    response = await client.get(f"/api/campaigns/{campaign_id}", headers=_headers())
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Campaign operation failed"}
+    assert secret not in response.text
+    assert "private\\font.ttf" not in response.text
+    assert secret not in caplog.text
+    record = caplog.records[-1]
+    assert record.operation == "retrieve"
+    assert record.campaign_id == str(campaign_id)
+    assert record.error_type == "RuntimeError"
 
 
 @pytest.mark.asyncio

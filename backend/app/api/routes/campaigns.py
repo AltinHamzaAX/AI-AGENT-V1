@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response, status
@@ -34,10 +35,28 @@ from app.modules.campaigns.schemas import (
 from app.shared.conversations.domain import ConversationNotFoundError
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _campaign_not_found() -> HTTPException:
     return HTTPException(status_code=404, detail="Campaign not found")
+
+
+def _unexpected_campaign_error(
+    *,
+    operation: str,
+    campaign_id: UUID | None,
+    error: Exception,
+) -> HTTPException:
+    logger.error(
+        "Unexpected Campaign operation failure",
+        extra={
+            "operation": operation,
+            "campaign_id": str(campaign_id) if campaign_id is not None else None,
+            "error_type": type(error).__name__,
+        },
+    )
+    return HTTPException(status_code=500, detail="Campaign operation failed")
 
 
 @router.post(
@@ -68,6 +87,12 @@ async def create_campaign(
             status_code=503,
             detail="Campaign creation is temporarily unavailable",
         ) from exc
+    except Exception as exc:
+        raise _unexpected_campaign_error(
+            operation="create",
+            campaign_id=None,
+            error=exc,
+        ) from exc
     return CreateCampaignResponse.from_domain(campaign)
 
 
@@ -87,6 +112,12 @@ async def get_campaign(
         raise HTTPException(
             status_code=503,
             detail="Campaign retrieval is temporarily unavailable",
+        ) from exc
+    except Exception as exc:
+        raise _unexpected_campaign_error(
+            operation="retrieve",
+            campaign_id=campaign_id,
+            error=exc,
         ) from exc
     return CampaignDetailResponse.from_domain(
         campaign,
@@ -131,6 +162,12 @@ async def generate_campaign(
             status_code=503,
             detail="Campaign Plan generation is temporarily unavailable",
         ) from exc
+    except Exception as exc:
+        raise _unexpected_campaign_error(
+            operation="generate",
+            campaign_id=campaign_id,
+            error=exc,
+        ) from exc
     return GenerateCampaignResponse(status=campaign.status, plan=plan)
 
 
@@ -148,6 +185,12 @@ async def get_campaign_plan(
         raise HTTPException(
             status_code=503,
             detail="Campaign Plan retrieval is temporarily unavailable",
+        ) from exc
+    except Exception as exc:
+        raise _unexpected_campaign_error(
+            operation="retrieve_plan",
+            campaign_id=campaign_id,
+            error=exc,
         ) from exc
     if plan is None:
         raise HTTPException(status_code=404, detail="Campaign Plan not available")
@@ -176,6 +219,12 @@ async def export_campaign(
             status_code=503,
             detail="Campaign export is temporarily unavailable",
         ) from exc
+    except Exception as exc:
+        raise _unexpected_campaign_error(
+            operation="load_export",
+            campaign_id=campaign_id,
+            error=exc,
+        ) from exc
     if plan is None:
         raise HTTPException(status_code=404, detail="Campaign Plan not available")
     try:
@@ -184,6 +233,12 @@ async def export_campaign(
         raise HTTPException(
             status_code=500,
             detail="Campaign export could not be created",
+        ) from exc
+    except Exception as exc:
+        raise _unexpected_campaign_error(
+            operation="render_export",
+            campaign_id=campaign_id,
+            error=exc,
         ) from exc
     return Response(
         content=result.content,
@@ -227,6 +282,12 @@ async def campaign_message(
         raise HTTPException(
             status_code=503,
             detail="Campaign messaging is temporarily unavailable",
+        ) from exc
+    except Exception as exc:
+        raise _unexpected_campaign_error(
+            operation="message",
+            campaign_id=campaign_id,
+            error=exc,
         ) from exc
     return CampaignMessageResponse(
         reply=result.reply,
