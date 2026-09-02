@@ -96,6 +96,35 @@ async def create_campaign(
     return CreateCampaignResponse.from_domain(campaign)
 
 
+@router.get("", response_model=CreateCampaignResponse)
+async def find_campaign_by_conversation(
+    conversation_id: UUID,
+    scope: ConversationScopeDependency,
+    service: CampaignServiceDependency,
+) -> CreateCampaignResponse:
+    try:
+        campaign = await service.find_campaign_by_conversation(
+            conversation_id=conversation_id,
+            scope=scope,
+        )
+        if campaign is None:
+            raise CampaignNotFoundError
+    except CampaignNotFoundError as exc:
+        raise _campaign_not_found() from exc
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Campaign retrieval is temporarily unavailable",
+        ) from exc
+    except Exception as exc:
+        raise _unexpected_campaign_error(
+            operation="find_by_conversation",
+            campaign_id=None,
+            error=exc,
+        ) from exc
+    return CreateCampaignResponse.from_domain(campaign)
+
+
 @router.get("/{campaign_id}", response_model=CampaignDetailResponse)
 async def get_campaign(
     campaign_id: UUID,

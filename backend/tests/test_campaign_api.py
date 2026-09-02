@@ -213,6 +213,38 @@ async def test_create_reuses_campaign_conversation_and_evaluates_initial_brief(
 
 
 @pytest.mark.asyncio
+async def test_find_campaign_by_conversation_recovers_identity_with_scope(
+    campaign_api: tuple[AsyncClient, FakeCampaignPlanGenerator],
+) -> None:
+    client, generator = campaign_api
+    owner = _headers()
+    conversation_id = await _conversation(client, owner)
+    created = await client.post(
+        "/api/campaigns",
+        headers=owner,
+        json={"conversation_id": conversation_id},
+    )
+
+    recovered = await client.get(
+        "/api/campaigns",
+        headers=owner,
+        params={"conversation_id": conversation_id},
+    )
+    cross_project = await client.get(
+        "/api/campaigns",
+        headers={**owner, "X-Project-ID": str(uuid4())},
+        params={"conversation_id": conversation_id},
+    )
+
+    assert created.status_code == 201
+    assert recovered.status_code == 200
+    assert recovered.json() == created.json()
+    assert cross_project.status_code == 404
+    assert cross_project.json() == {"detail": "Campaign not found"}
+    assert generator.briefs == []
+
+
+@pytest.mark.asyncio
 async def test_create_rejects_wrong_kind_and_out_of_scope_conversations(
     campaign_api: tuple[AsyncClient, FakeCampaignPlanGenerator],
 ) -> None:

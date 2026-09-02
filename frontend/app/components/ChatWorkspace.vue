@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import type { ChatMessage, ConversationType } from '~/types/chat'
+import type { CampaignStatus, ChatMessage, ConversationType } from '~/types/chat'
 import { CONTEXT_LABELS, INTENT_LABELS, POST_PROGRESS, postProgressIndex } from '~/types/chat'
 
 const props = defineProps<{ type: ConversationType, conversationId?: string }>()
 const workspace = useChatWorkspace(props.type)
 const router = useRouter()
 const draft = ref('')
+const creating = ref(false)
 const section = props.type === 'post' ? 'posts' : 'campaigns'
 
 const activeId = computed(() => props.conversationId)
 const activeMessages = computed(() => activeId.value ? workspace.messages.value[activeId.value] || [] : [])
 const context = computed(() => activeId.value ? workspace.contexts.value[activeId.value] : undefined)
+const campaign = computed(() => activeId.value ? workspace.campaignStates.value[activeId.value] : undefined)
 const progress = computed(() => activeId.value ? workspace.progress.value[activeId.value] : undefined)
 const activity = computed(() => activeId.value ? workspace.activity.value[activeId.value] || 'idle' : 'idle')
 const knownContext = computed(() => CONTEXT_LABELS
@@ -22,6 +24,23 @@ const processingLabel = computed(() => {
   if (activity.value === 'thinking') return 'Promotiva is thinking...'
   if (activity.value === 'responding') return 'Promotiva is responding...'
   return ''
+})
+const campaignStatusLabel = computed(() => {
+  const status: CampaignStatus | undefined = campaign.value?.status
+  if (status === 'READY') return 'Ready for Campaign Plan generation'
+  if (status === 'GENERATING') return 'Campaign Plan is being generated'
+  if (status === 'PLAN_READY') return 'Campaign Plan ready'
+  return 'Still collecting campaign information'
+})
+const campaignBriefItems = computed(() => {
+  const brief = campaign.value?.brief
+  if (!brief) return []
+  return [
+    ['Business', brief.business || brief.product_or_service],
+    ['Goal', brief.goal],
+    ['Audience', brief.audience],
+    ['Location', brief.location],
+  ].filter((item): item is [string, string] => typeof item[1] === 'string' && item[1].length > 0)
 })
 
 /** Uploads are stored against the message that carried them. */
@@ -53,14 +72,23 @@ async function newChat() {
 
 async function submit() {
   const content = draft.value.trim()
-  if (!content || workspace.busy.value) return
+  if (!content || workspace.busy.value || creating.value) return
   let conversationId = activeId.value
   if (!conversationId) {
+    creating.value = true
     const fallback = props.type === 'post' ? 'New Post Chat' : 'New Campaign Chat'
     const title = content.length > 60 ? `${content.slice(0, 57)}...` : content
-    const chat = await workspace.createConversation(title || fallback)
-    conversationId = chat.id
-    await router.push(`/${section}/${chat.id}`)
+    try {
+      const chat = await workspace.createConversation(title || fallback)
+      conversationId = chat.id
+      await router.push(`/${section}/${chat.id}`)
+    }
+    catch (cause) {
+      workspace.error.value = cause instanceof Error ? cause.message : 'Could not start the chat.'
+      creating.value = false
+      return
+    }
+    creating.value = false
   }
   const sent = draft.value
   draft.value = ''
@@ -90,6 +118,10 @@ async function submit() {
       <section v-if="!activeId" class="empty-state"><span class="spark">*</span><h1>What should we create?</h1><p>{{ type === 'post' ? 'Tell me about your business and what you want to promote. Ask questions, share images, and I will build the post when the brief is ready.' : 'Describe your campaign below. Campaign generation arrives with the Campaign Engine.' }}</p></section>
       <template v-else>
         <section class="messages">
+          <section v-if="type === 'campaign' && campaign" class="campaign-status" :class="campaign.status.toLowerCase()" aria-live="polite">
+            <div><strong>{{ campaignStatusLabel }}</strong><span v-if="campaign.status === 'READY'">You can generate a plan when that action is available.</span></div>
+            <div v-if="campaignBriefItems.length" class="campaign-brief"><span v-for="[label, value] in campaignBriefItems" :key="label"><b>{{ label }}</b>{{ value }}</span></div>
+          </section>
           <div v-if="knownContext.length" class="context-bar">
             <span v-for="[label, value] in knownContext" :key="label" class="context-chip"><b>{{ label }}</b>{{ value }}</span>
           </div>
@@ -114,8 +146,8 @@ async function submit() {
         </section>
       </template>
       <footer class="composer-wrap">
-        <div v-if="workspace.attachments.value.length" class="attachment-strip"><figure v-for="item in workspace.attachments.value" :key="item.id"><img :src="item.previewUrl" :alt="item.file.name"><button @click="workspace.removeAttachment(item.id)">x</button><figcaption>{{ item.file.name }}</figcaption></figure></div>
-        <form class="composer" @submit.prevent="submit"><textarea v-model="draft" rows="2" :placeholder="type === 'post' ? 'Ask, discuss, or request the post...' : 'Describe the campaign...'" @keydown.enter.exact.prevent="submit" /><div class="composer-actions"><label class="attach">+ Images<input type="file" accept="image/*" multiple @change="workspace.addFiles(($event.target as HTMLInputElement).files)"></label><button class="send" :disabled="workspace.busy.value || !draft.trim()">Send</button></div></form>
+        <div v-if="type === 'post' && workspace.attachments.value.length" class="attachment-strip"><figure v-for="item in workspace.attachments.value" :key="item.id"><img :src="item.previewUrl" :alt="item.file.name"><button @click="workspace.removeAttachment(item.id)">x</button><figcaption>{{ item.file.name }}</figcaption></figure></div>
+        <form class="composer" @submit.prevent="submit"><textarea v-model="draft" rows="2" :placeholder="type === 'post' ? 'Ask, discuss, or request the post...' : 'Describe the campaign...'" @keydown.enter.exact.prevent="submit" /><div class="composer-actions"><label v-if="type === 'post'" class="attach">+ Images<input type="file" accept="image/*" multiple @change="workspace.addFiles(($event.target as HTMLInputElement).files)"></label><span v-else class="campaign-hint">Campaign briefing</span><button class="send" :disabled="workspace.busy.value || !draft.trim()">Send</button></div></form>
         <p v-if="workspace.error.value" class="error-message">{{ workspace.error.value }}</p>
       </footer>
     </main>
