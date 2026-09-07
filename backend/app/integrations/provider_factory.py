@@ -1,7 +1,7 @@
 from app.core.config import Settings, get_settings
 from app.infrastructure.storage.s3 import S3Storage
 from app.integrations.gemini import GeminiProvider
-from app.integrations.huggingface import HuggingFaceImageProvider
+from app.integrations.huggingface import HuggingFaceImageProvider, HuggingFaceLLMProvider
 from app.integrations.mock import (
     MockEmbeddingProvider,
     MockImageProvider,
@@ -63,6 +63,13 @@ def create_llm_provider(settings: Settings | None = None) -> LLMProvider:
             model=_model(configured.llm_model, capability="LLM"),
             timeout_seconds=configured.provider_timeout_seconds,
         )
+    if name == "huggingface":
+        return HuggingFaceLLMProvider(
+            api_key=_huggingface_api_key(configured),
+            model=_model(configured.llm_model, capability="LLM"),
+            base_url=configured.huggingface_base_url,
+            timeout_seconds=configured.provider_timeout_seconds,
+        )
     if name == "ollama":
         return OllamaLLMProvider(
             base_url=configured.ollama_base_url,
@@ -94,6 +101,13 @@ def create_creative_llm_provider(settings: Settings | None = None) -> LLMProvide
         return GeminiProvider(
             api_key=_gemini_api_key(configured),
             model=model,
+            timeout_seconds=configured.provider_timeout_seconds,
+        )
+    if name == "huggingface":
+        return HuggingFaceLLMProvider(
+            api_key=_huggingface_api_key(configured),
+            model=model,
+            base_url=configured.huggingface_base_url,
             timeout_seconds=configured.provider_timeout_seconds,
         )
     if name == "ollama":
@@ -129,10 +143,8 @@ def create_image_provider(settings: Settings | None = None) -> ImageProvider:
     if name == "mock":
         return MockImageProvider()
     if name in {"huggingface", "hf"}:
-        if not configured.huggingface_api_token:
-            raise ProviderConfigurationError("Hugging Face token is required")
         return HuggingFaceImageProvider(
-            token=configured.huggingface_api_token,
+            token=_huggingface_api_key(configured),
             model=_model(configured.image_model, capability="image"),
         )
     raise _unsupported("image", name)
@@ -202,6 +214,12 @@ def _gemini_api_key(settings: Settings) -> str:
     if not settings.gemini_api_key:
         raise ProviderConfigurationError("Gemini API key is required")
     return settings.gemini_api_key
+
+
+def _huggingface_api_key(settings: Settings) -> str:
+    if not settings.huggingface_api_key:
+        raise ProviderConfigurationError("Hugging Face API key is required")
+    return settings.huggingface_api_key
 
 
 def _unsupported(capability: str, provider: str) -> ProviderConfigurationError:

@@ -69,8 +69,8 @@ class Settings(BaseSettings):
     ollama_keep_alive: str = "10m"
     image_provider: str = ""
     image_model: str = ""
-    huggingface_api_base_url: str = "https://router.huggingface.co"
-    huggingface_api_token: str = Field(default="", repr=False)
+    huggingface_base_url: str = "https://router.huggingface.co/v1"
+    huggingface_api_key: str = Field(default="", repr=False)
     vision_provider: str = ""
     vision_model: str = ""
     embedding_provider: str = ""
