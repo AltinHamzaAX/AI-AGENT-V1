@@ -1,3 +1,23 @@
-from app.integrations.llm.base import LLMProvider
+from app.integrations.llm.base import (
+    LLMMessage,
+    LLMProvider,
+    LLMRequest,
+    LLMResponse,
+    ProviderConfigurationError,
+    ProviderError,
+    ProviderQuotaError,
+    ProviderRateLimitError,
+    ProviderResponseError,
+)
 
-__all__ = ["LLMProvider"]
+__all__ = [
+    "LLMMessage",
+    "LLMProvider",
+    "LLMRequest",
+    "LLMResponse",
+    "ProviderConfigurationError",
+    "ProviderError",
+    "ProviderQuotaError",
+    "ProviderRateLimitError",
+    "ProviderResponseError",
+]

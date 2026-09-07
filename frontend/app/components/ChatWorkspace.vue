@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import type { ChatMessage, ConversationType } from '~/types/chat'
+import type { CampaignStatus, ChatMessage, ConversationType } from '~/types/chat'
 import { CONTEXT_LABELS, INTENT_LABELS, POST_PROGRESS, postProgressIndex } from '~/types/chat'
 
 const props = defineProps<{ type: ConversationType, conversationId?: string }>()
 const workspace = useChatWorkspace(props.type)
 const router = useRouter()
 const draft = ref('')
+const creating = ref(false)
 const section = props.type === 'post' ? 'posts' : 'campaigns'
 
 const activeId = computed(() => props.conversationId)
 const activeMessages = computed(() => activeId.value ? workspace.messages.value[activeId.value] || [] : [])
 const context = computed(() => activeId.value ? workspace.contexts.value[activeId.value] : undefined)
+const campaign = computed(() => activeId.value ? workspace.campaignStates.value[activeId.value] : undefined)
+const campaignPlan = computed(() => activeId.value ? workspace.campaignPlans.value[activeId.value] : undefined)
+const campaignGenerating = computed(() => activeId.value ? workspace.campaignGenerating.value[activeId.value] === true : false)
+const campaignExporting = computed(() => activeId.value ? workspace.campaignExporting.value[activeId.value] === true : false)
 const progress = computed(() => activeId.value ? workspace.progress.value[activeId.value] : undefined)
 const activity = computed(() => activeId.value ? workspace.activity.value[activeId.value] || 'idle' : 'idle')
 const knownContext = computed(() => CONTEXT_LABELS
@@ -22,6 +27,28 @@ const processingLabel = computed(() => {
   if (activity.value === 'thinking') return 'Promotiva is thinking...'
   if (activity.value === 'responding') return 'Promotiva is responding...'
   return ''
+})
+const campaignStatusLabel = computed(() => {
+  if (campaignGenerating.value) return 'Generating your Campaign Plan'
+  const status: CampaignStatus | undefined = campaign.value?.status
+  if (status === 'READY') return 'Ready for Campaign Plan generation'
+  if (status === 'GENERATING') return 'Campaign Plan is being generated'
+  if (status === 'PLAN_READY') return 'Campaign Plan ready'
+  return 'Still collecting campaign information'
+})
+const campaignActionLabel = computed(() => {
+  if (campaignGenerating.value) return 'Generating...'
+  return campaign.value?.plan_outdated ? 'Regenerate Campaign Plan' : 'Generate Campaign Plan'
+})
+const campaignBriefItems = computed(() => {
+  const brief = campaign.value?.brief
+  if (!brief) return []
+  return [
+    ['Business', brief.business || brief.product_or_service],
+    ['Goal', brief.goal],
+    ['Audience', brief.audience],
+    ['Location', brief.location],
+  ].filter((item): item is [string, string] => typeof item[1] === 'string' && item[1].length > 0)
 })
 
 /** Uploads are stored against the message that carried them. */
@@ -53,14 +80,23 @@ async function newChat() {
 
 async function submit() {
   const content = draft.value.trim()
-  if (!content || workspace.busy.value) return
+  if (!content || workspace.busy.value || creating.value) return
   let conversationId = activeId.value
   if (!conversationId) {
+    creating.value = true
     const fallback = props.type === 'post' ? 'New Post Chat' : 'New Campaign Chat'
     const title = content.length > 60 ? `${content.slice(0, 57)}...` : content
-    const chat = await workspace.createConversation(title || fallback)
-    conversationId = chat.id
-    await router.push(`/${section}/${chat.id}`)
+    try {
+      const chat = await workspace.createConversation(title || fallback)
+      conversationId = chat.id
+      await router.push(`/${section}/${chat.id}`)
+    }
+    catch (cause) {
+      workspace.error.value = cause instanceof Error ? cause.message : 'Could not start the chat.'
+      creating.value = false
+      return
+    }
+    creating.value = false
   }
   const sent = draft.value
   draft.value = ''
@@ -70,6 +106,14 @@ async function submit() {
   catch {
     draft.value = sent
   }
+}
+
+async function generateCampaign() {
+  if (activeId.value) await workspace.generateCampaign(activeId.value)
+}
+
+async function exportCampaign() {
+  if (activeId.value) await workspace.exportCampaign(activeId.value)
 }
 
 </script>
@@ -90,6 +134,10 @@ async function submit() {
       <section v-if="!activeId" class="empty-state"><span class="spark">*</span><h1>What should we create?</h1><p>{{ type === 'post' ? 'Tell me about your business and what you want to promote. Ask questions, share images, and I will build the post when the brief is ready.' : 'Describe your campaign below. Campaign generation arrives with the Campaign Engine.' }}</p></section>
       <template v-else>
         <section class="messages">
+          <section v-if="type === 'campaign' && campaign" class="campaign-status" :class="campaign.status.toLowerCase()" aria-live="polite">
+            <div><div><strong>{{ campaignStatusLabel }}</strong><span v-if="campaign.status === 'BRIEFING'">Keep chatting so Promotiva can complete the essential context.</span><span v-else-if="campaign.status === 'READY' && campaign.plan_outdated && !campaignGenerating">Your previous plan is outdated because the Campaign Brief changed. Regenerate it when you are ready.</span><span v-else-if="campaign.status === 'READY' && !campaignGenerating">Your brief has enough information. Generation starts only when you choose it.</span></div><button v-if="campaign.status === 'READY'" class="campaign-generate" :disabled="campaignGenerating" @click="generateCampaign">{{ campaignActionLabel }}</button></div>
+            <div v-if="campaignBriefItems.length" class="campaign-brief"><span v-for="[label, value] in campaignBriefItems" :key="label"><b>{{ label }}</b>{{ value }}</span></div>
+          </section>
           <div v-if="knownContext.length" class="context-bar">
             <span v-for="[label, value] in knownContext" :key="label" class="context-chip"><b>{{ label }}</b>{{ value }}</span>
           </div>
@@ -111,13 +159,19 @@ async function submit() {
             </div>
             <p v-if="progress.error" class="error-message">{{ progress.error }}</p>
           </section>
+          <section v-if="type === 'campaign' && campaignGenerating" class="campaign-generation" aria-live="polite" aria-busy="true"><i class="typing-dots"><b /><b /><b /></i><div><strong>Building your Campaign Plan</strong><p>Your confirmed brief stays visible while the backend generates and validates the plan.</p></div></section>
+          <CampaignPlanView v-if="type === 'campaign' && campaign?.status === 'PLAN_READY' && campaignPlan" :plan="campaignPlan" :exporting="campaignExporting" @export="exportCampaign" />
         </section>
       </template>
       <footer class="composer-wrap">
-        <div v-if="workspace.attachments.value.length" class="attachment-strip"><figure v-for="item in workspace.attachments.value" :key="item.id"><img :src="item.previewUrl" :alt="item.file.name"><button @click="workspace.removeAttachment(item.id)">x</button><figcaption>{{ item.file.name }}</figcaption></figure></div>
-        <form class="composer" @submit.prevent="submit"><textarea v-model="draft" rows="2" :placeholder="type === 'post' ? 'Ask, discuss, or request the post...' : 'Describe the campaign...'" @keydown.enter.exact.prevent="submit" /><div class="composer-actions"><label class="attach">+ Images<input type="file" accept="image/*" multiple @change="workspace.addFiles(($event.target as HTMLInputElement).files)"></label><button class="send" :disabled="workspace.busy.value || !draft.trim()">Send</button></div></form>
+        <div v-if="type === 'post' && workspace.attachments.value.length" class="attachment-strip"><figure v-for="item in workspace.attachments.value" :key="item.id"><img :src="item.previewUrl" :alt="item.file.name"><button @click="workspace.removeAttachment(item.id)">x</button><figcaption>{{ item.file.name }}</figcaption></figure></div>
+        <form class="composer" @submit.prevent="submit"><textarea v-model="draft" rows="2" :placeholder="type === 'post' ? 'Ask, discuss, or request the post...' : 'Describe the campaign...'" @keydown.enter.exact.prevent="submit" /><div class="composer-actions"><label v-if="type === 'post'" class="attach">+ Images<input type="file" accept="image/*" multiple @change="workspace.addFiles(($event.target as HTMLInputElement).files)"></label><span v-else class="campaign-hint">Campaign briefing</span><button class="send" :disabled="workspace.busy.value || !draft.trim()">Send</button></div></form>
         <p v-if="workspace.error.value" class="error-message">{{ workspace.error.value }}</p>
       </footer>
     </main>
   </div>
 </template>
+
+<style scoped>
+.campaign-status>div:first-child>div{display:flex;flex-direction:column;gap:4px}.campaign-generate{flex:0 0 auto;border:0;border-radius:10px;background:#244c36;color:#fff;padding:9px 13px;font-size:12px;font-weight:800;cursor:pointer}.campaign-generate:disabled{cursor:wait;opacity:.55}.campaign-generation{display:flex;align-items:center;gap:14px;margin:18px 0;padding:17px 19px;border:1px solid #d7e4d9;border-radius:15px;background:#f4f8f4}.campaign-generation strong{font-size:13px}.campaign-generation p{margin:3px 0 0;color:#707970;font-size:12px}@media(max-width:700px){.campaign-status>div:first-child{align-items:stretch;flex-direction:column}.campaign-generate{width:100%}}
+</style>

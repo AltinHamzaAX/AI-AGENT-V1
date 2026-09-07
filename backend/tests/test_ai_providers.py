@@ -174,7 +174,7 @@ def test_config_selects_concrete_adapters_without_changing_contracts() -> None:
             vision_model="qwen-vl",
             image_provider="huggingface",
             image_model="flux",
-            huggingface_api_token="hf-test",
+            huggingface_api_key="hf-test",
             embedding_provider="ollama",
             embedding_model="embeddinggemma",
             research_provider="tavily",

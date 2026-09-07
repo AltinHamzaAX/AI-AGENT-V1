@@ -8,6 +8,62 @@ export type ChatAction = 'reply' | 'ask' | 'generate' | 'revise'
 export interface ChatTurnMetadata { intent?: ChatIntent; action?: ChatAction; reason?: string; questions?: string[]; generation_ready?: boolean; post_id?: string; generation_id?: string; attempt?: number; revises_generation_id?: string }
 export interface ChatMessage { id: string; conversation_id: string; sequence: number; role: 'user' | 'assistant' | 'system' | 'tool'; content: string; metadata: { chat?: ChatTurnMetadata } & Record<string, unknown>; created_at: string }
 
+export type CampaignStatus = 'BRIEFING' | 'READY' | 'GENERATING' | 'PLAN_READY'
+export interface CampaignBrief {
+  business: string | null
+  product_or_service: string | null
+  goal: string | null
+  audience: string | null
+  location: string | null
+  offer: string | null
+  value_proposition: string | null
+  channels: string[] | null
+  budget_amount: number | null
+  budget_currency: string | null
+  duration: string | null
+  brand_tone: string | null
+  constraints: string[] | null
+}
+export interface CampaignDetail {
+  id: string
+  conversation_id: string
+  status: CampaignStatus
+  brief: CampaignBrief
+  plan_available: boolean
+  plan_outdated: boolean
+  created_at: string
+  updated_at: string
+}
+export interface CampaignCreate { id: string; conversation_id: string; status: CampaignStatus }
+export interface CampaignMessageResponse { reply: string; status: CampaignStatus; brief: CampaignBrief }
+export interface CampaignObjective { primary: string; secondary: string | null }
+export interface CampaignTargetAudience { primary: string; location: string | null; needs_or_motivations: string[] }
+export interface CampaignChannelStrategy { name: string; purpose: string; reason: string }
+export interface CampaignContentDirection { idea: string; purpose: string }
+export interface CampaignBudgetItem { channel: string; amount: number | string; reason: string }
+export interface CampaignBudgetAllocation { total: number | string; currency: string; items: CampaignBudgetItem[] }
+export interface CampaignTimelinePhase { period: string; phase: string; objective: string; activities: string[] }
+export interface CampaignKpi { name: string; purpose: string }
+export interface CampaignPlan {
+  campaign_name: string
+  executive_summary: string
+  objective: CampaignObjective
+  target_audience: CampaignTargetAudience
+  offer: string | null
+  value_proposition: string
+  positioning: string
+  key_message: string
+  strategy: string
+  channels: CampaignChannelStrategy[]
+  content_direction: CampaignContentDirection[]
+  budget_allocation: CampaignBudgetAllocation | null
+  timeline: CampaignTimelinePhase[]
+  kpis: CampaignKpi[]
+  assumptions_or_risks: string[]
+  next_steps: string[]
+}
+export interface CampaignGenerateResponse { status: CampaignStatus; plan: CampaignPlan }
+
 export interface PendingAttachment { id: string; file: File; previewUrl: string }
 export interface ContextAsset { id: string; message_id: string; role: string; original_filename: string; mime_type: string; width: number | null; height: number | null }
 

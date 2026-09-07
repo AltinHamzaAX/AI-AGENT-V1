@@ -2,6 +2,7 @@
 
 from app.infrastructure.database.repositories.assets import SQLAlchemyAssetRepository
 from app.infrastructure.database.repositories.base import SQLAlchemyRepository
+from app.infrastructure.database.repositories.campaigns import SQLAlchemyCampaignRepository
 from app.infrastructure.database.repositories.conversations import (
     SQLAlchemyConversationRepository,
 )
@@ -28,6 +29,7 @@ from app.infrastructure.database.repositories.worker_semantic_memory import (
 
 __all__ = [
     "SQLAlchemyAssetRepository",
+    "SQLAlchemyCampaignRepository",
     "SQLAlchemyConversationRepository",
     "SQLAlchemyPostRepository",
     "SQLAlchemyPostMemoryScopeResolver",
